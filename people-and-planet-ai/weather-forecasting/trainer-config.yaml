@@ -1,0 +1,9 @@
+workerPoolSpecs:
+  machineSpec:
+    # https://cloud.google.com/vertex-ai/docs/training/configure-compute#machine-types
+    machineType: e2-highmem-2
+  replicaCount: 1
+
+  containerSpec:
+    # https://cloud.google.com/vertex-ai/docs/training/pre-built-containers#pytorch
+    imageUri: us-docker.pkg.dev/vertex-ai/training/pytorch-xla.1-11:latest
