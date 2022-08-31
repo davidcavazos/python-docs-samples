@@ -33,7 +33,7 @@ gcloud ai custom-jobs local-run \
 # https://cloud.google.com/sdk/gcloud/reference/ai/custom-jobs/create
 gcloud ai custom-jobs create \
   --display-name "weather-forecasting" \
-  --config "trainer-config.yaml" \
+  --worker-pool-spec machine-type="e2-highmem-2",local-package-path=".",script="trainer.py",executor-image-uri="us-docker.pkg.dev/vertex-ai/training/pytorch-xla.1-11:latest" \
   --region "$LOCATION"
 ```
 
