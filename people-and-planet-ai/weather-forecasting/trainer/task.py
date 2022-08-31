@@ -39,11 +39,11 @@ class WeatherDataset(Dataset):
 class Model(torch.nn.Module):
     def __init__(
         self,
-        num_inputs: int = 17,
-        num_outputs: int = 1,
-        patch_size: int = 16,
-        input_timesteps: int = 3,
-        output_timesteps: int = 2,
+        num_inputs: int,
+        num_outputs: int,
+        patch_size: int,
+        input_timesteps: int,
+        output_timesteps: int,
         hidden_units: int = 8,
     ):
         super(Model, self).__init__()
@@ -77,7 +77,7 @@ def train(
 ) -> float:
     dataloader = DataLoader(dataset, batch_size, shuffle=True)
     model.train()
-    for batch, (inputs, labels) in enumerate(dataloader):
+    for inputs, labels in dataloader:
         (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
 
         # Compute prediction error
@@ -98,6 +98,7 @@ def test(model: Model, dataset: Dataset, batch_size: int) -> float:
     with torch.no_grad():
         for inputs, labels in dataloader:
             (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
+
             predictions = model(inputs)
             test_loss += model.loss(predictions, labels).item()
     return test_loss / len(dataloader)
@@ -136,7 +137,14 @@ def run(
     print(f"Train dataset contains {len(train_dataset)} examples")
     print(f"Test dataset contains {len(test_dataset)} examples")
 
-    model = Model()
+    model = Model(
+        num_inputs=17,
+        num_outputs=1,
+        patch_size=patch_size,
+        input_timesteps=input_timesteps,
+        output_timesteps=output_timesteps,
+    )
+    model.to(model.device)
     print(f"Model device: {model.device}")
     print(model)
 
