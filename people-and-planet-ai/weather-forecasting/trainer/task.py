@@ -61,9 +61,10 @@ class Model(torch.nn.Module):
         )
         self.loss = torch.nn.L1Loss()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.to(self.device)
 
-    def forward(self, x):
-        return self.layers(x)
+    def forward(self, x: torch.Tensor):
+        return self.layers(x.to(self.device))
 
 
 def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, Dataset]:
@@ -78,7 +79,7 @@ def train(
     dataloader = DataLoader(dataset, batch_size, shuffle=True)
     model.train()
     for inputs, labels in dataloader:
-        (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
+        # (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
 
         # Compute prediction error
         predictions = model(inputs)
@@ -97,7 +98,7 @@ def test(model: Model, dataset: Dataset, batch_size: int) -> float:
     test_loss = 0.0
     with torch.no_grad():
         for inputs, labels in dataloader:
-            (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
+            # (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
 
             predictions = model(inputs)
             test_loss += model.loss(predictions, labels).item()
@@ -144,7 +145,6 @@ def run(
         input_timesteps=input_timesteps,
         output_timesteps=output_timesteps,
     )
-    model.to(model.device)
     print(f"Model device: {model.device}")
     print(model)
 
