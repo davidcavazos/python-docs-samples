@@ -108,8 +108,8 @@ def fit(
     train_dataset: Dataset,
     test_dataset: Dataset,
     optimizer: Optimizer,
-    epochs: int,
     batch_size: int,
+    epochs: int,
 ) -> Model:
     print(f"Device: {model.device}")
     for epoch in range(epochs):
@@ -142,7 +142,9 @@ def run(
 
     optimizer = torch.optim.Adam(model.parameters())
     print(optimizer)
-    trained_model = fit(model, train_dataset, test_dataset, optimizer, epochs=5)
+    trained_model = fit(
+        model, train_dataset, test_dataset, optimizer, batch_size, epochs
+    )
 
     torch.save(trained_model.state_dict(), model_path)
     print(f"Model saved to path: {model_path}")
