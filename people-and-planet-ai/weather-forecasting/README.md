@@ -1,8 +1,12 @@
+# Google Cloud resources
+
 ```sh
 PROJECT="my-cloud-project-name"
 BUCKET="my-cloud-storage-bucket"
 LOCATION="my-cloud-location"
 ```
+
+# Create the datasets
 
 ```sh
 python datasets.py \
@@ -16,6 +20,8 @@ python datasets.py \
 ```
 
 https://console.cloud.google.com/dataflow/jobs
+
+# Train the model
 
 ```sh
 # https://cloud.google.com/vertex-ai/docs/training/pre-built-containers#pytorch
