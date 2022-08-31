@@ -191,7 +191,6 @@ def run(
     beam_options = PipelineOptions(
         beam_args,
         save_main_session=True,
-        # pickle_library="cloudpickle",
         requirements_file="requirements.txt",
     )
     with beam.Pipeline(options=beam_options) as pipeline:
@@ -218,10 +217,10 @@ if __name__ == "__main__":
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--num-dates", type=int, default=100)
     parser.add_argument("--points-per-date", type=int, default=100)
-    parser.add_argument("--west", type=float, default=-79.1)
-    parser.add_argument("--south", type=float, default=25.6)
-    parser.add_argument("--east", type=float, default=-76.9)
-    parser.add_argument("--north", type=float, default=26.5)
+    parser.add_argument("--west", type=float, default=-125.3)
+    parser.add_argument("--south", type=float, default=27.4)
+    parser.add_argument("--east", type=float, default=-66.5)
+    parser.add_argument("--north", type=float, default=49.1)
     parser.add_argument("--patch-size", type=int, default=64)
     args, beam_args = parser.parse_known_args()
 
