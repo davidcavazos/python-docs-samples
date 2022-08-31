@@ -24,7 +24,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 
 class WeatherDataset(Dataset):
     def __init__(self, data_path: str):
-        self.files = glob(os.path.join(data_path, "*"), recursive=True)
+        self.files = glob(os.path.join(data_path, "**", "*.npz"), recursive=True)
 
     def __len__(self) -> int:
         return len(self.files)
