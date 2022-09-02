@@ -76,7 +76,9 @@ def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, D
 def train(
     model: Model, dataset: Dataset, optimizer: Optimizer, batch_size: int
 ) -> float:
-    dataloader = DataLoader(dataset, batch_size, shuffle=True)
+    dataloader = DataLoader(
+        dataset, batch_size, num_workers=os.cpu_count(), shuffle=True
+    )
     model.train()
     for inputs, labels in dataloader:
         (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
@@ -93,7 +95,7 @@ def train(
 
 
 def test(model: Model, dataset: Dataset, batch_size: int) -> float:
-    dataloader = DataLoader(dataset, batch_size)
+    dataloader = DataLoader(dataset, batch_size, num_workers=os.cpu_count())
     model.eval()
     test_loss = 0.0
     with torch.no_grad():
@@ -164,7 +166,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--model-path", required=True)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--train-test-ratio", type=float, default=0.9)
     parser.add_argument("--patch-size", type=int, default=16)
