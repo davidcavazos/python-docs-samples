@@ -36,7 +36,7 @@ class WeatherDataset(Dataset):
             return (torch.from_numpy(inputs), torch.from_numpy(labels))
 
 
-class Model(torch.nn.Module):
+class FullyConvolutionalNetwork(torch.nn.Module):
     def __init__(
         self,
         num_inputs: int,
@@ -46,7 +46,7 @@ class Model(torch.nn.Module):
         output_timesteps: int,
         hidden_units: int = 8,
     ):
-        super(Model, self).__init__()
+        super(FullyConvolutionalNetwork, self).__init__()
         self.layers = torch.nn.Sequential(
             torch.nn.Conv3d(
                 in_channels=num_inputs,
@@ -74,7 +74,10 @@ def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, D
 
 
 def train(
-    model: Model, dataset: Dataset, optimizer: Optimizer, batch_size: int
+    model: FullyConvolutionalNetwork,
+    dataset: Dataset,
+    optimizer: Optimizer,
+    batch_size: int,
 ) -> float:
     dataloader = DataLoader(
         dataset, batch_size, num_workers=os.cpu_count(), shuffle=True
@@ -94,7 +97,7 @@ def train(
         return loss.item()
 
 
-def test(model: Model, dataset: Dataset, batch_size: int) -> float:
+def test(model: FullyConvolutionalNetwork, dataset: Dataset, batch_size: int) -> float:
     dataloader = DataLoader(dataset, batch_size, num_workers=os.cpu_count())
     model.eval()
     test_loss = 0.0
@@ -108,13 +111,13 @@ def test(model: Model, dataset: Dataset, batch_size: int) -> float:
 
 
 def fit(
-    model: Model,
+    model: FullyConvolutionalNetwork,
     train_dataset: Dataset,
     test_dataset: Dataset,
     optimizer: Optimizer,
     batch_size: int,
     epochs: int,
-) -> Model:
+) -> FullyConvolutionalNetwork:
     print(f"Device: {model.device}")
     for epoch in range(epochs):
         train_loss = train(model, train_dataset, optimizer, batch_size)
@@ -136,11 +139,11 @@ def run(
     output_timesteps: int,
 ):
     dataset = WeatherDataset(data_path)
-    (train_dataset, test_dataset) = split_dataset(dataset, train_test_ratio)
-    print(f"Train dataset contains {len(train_dataset)} examples")
-    print(f"Test dataset contains {len(test_dataset)} examples")
+    (train_data, test_data) = split_dataset(dataset, train_test_ratio)
+    print(f"Train dataset contains {len(train_data)} examples")
+    print(f"Test dataset contains {len(test_data)} examples")
 
-    model = Model(
+    model = FullyConvolutionalNetwork(
         num_inputs=17,
         num_outputs=1,
         patch_size=patch_size,
@@ -152,11 +155,9 @@ def run(
 
     optimizer = torch.optim.Adam(model.parameters())
     print(optimizer)
-    trained_model = fit(
-        model, train_dataset, test_dataset, optimizer, batch_size, epochs
-    )
+    trained_model = fit(model, train_data, test_data, optimizer, batch_size, epochs)
 
-    torch.save(trained_model.state_dict(), model_path)
+    torch.save(trained_model, model_path)
     print(f"Model saved to path: {model_path}")
 
 
