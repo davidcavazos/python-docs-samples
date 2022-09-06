@@ -82,6 +82,8 @@ def train(
     dataloader = DataLoader(
         dataset, batch_size, num_workers=os.cpu_count(), shuffle=True
     )
+    total_loss = 0.0
+
     model.train()
     for inputs, labels in dataloader:
         (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
@@ -89,25 +91,27 @@ def train(
         # Compute prediction error
         predictions = model(inputs)
         loss = model.loss(predictions, labels)
+        total_loss += loss.item()
 
         # Backpropagation
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        return loss.item()
+    return total_loss / len(dataloader)
 
 
 def test(model: FullyConvolutionalNetwork, dataset: Dataset, batch_size: int) -> float:
     dataloader = DataLoader(dataset, batch_size, num_workers=os.cpu_count())
+    total_loss = 0.0
+
     model.eval()
-    test_loss = 0.0
     with torch.no_grad():
         for inputs, labels in dataloader:
             (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
 
             predictions = model(inputs)
-            test_loss += model.loss(predictions, labels).item()
-    return test_loss / len(dataloader)
+            total_loss += model.loss(predictions, labels).item()
+    return total_loss / len(dataloader)
 
 
 def fit(
