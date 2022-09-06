@@ -59,7 +59,7 @@ class FullyConvolutionalNetwork(torch.nn.Module):
                 kernel_size=(output_timesteps, patch_size, patch_size),
             ),
         )
-        self.loss = torch.nn.L1Loss()
+        self.loss = torch.nn.MSELoss()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.to(self.device)
 
