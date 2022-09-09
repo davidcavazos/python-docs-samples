@@ -36,9 +36,27 @@ class WeatherDataset(Dataset):
             return (torch.from_numpy(inputs), torch.from_numpy(labels))
 
 
+class Normalize(torch.nn.Module):
+    """Preprocessing normalization layer."""
+
+    def __init__(self, std: torch.Tensor, mean: torch.Tensor):
+        super().__init__()
+        self.std = std
+        self.mean = mean
+
+    def forward(self, inputs):
+        # scaled = (inputs - mean) / std
+        shape = [inputs.shape[1]] + [1] * len(inputs.shape[2:])
+        return inputs.map_(self.mean.reshape(shape), torch.sub).map_(
+            self.std.reshape(shape), torch.div
+        )
+
+
 class FullyConvolutionalNetwork(torch.nn.Module):
     def __init__(
         self,
+        std: torch.Tensor,
+        mean: torch.Tensor,
         num_inputs: int,
         num_outputs: int,
         patch_size: int,
@@ -48,23 +66,37 @@ class FullyConvolutionalNetwork(torch.nn.Module):
     ):
         super(FullyConvolutionalNetwork, self).__init__()
         self.layers = torch.nn.Sequential(
+            Normalize(std, mean),
             torch.nn.Conv3d(
                 in_channels=num_inputs,
                 out_channels=hidden_units,
                 kernel_size=(input_timesteps, patch_size, patch_size),
             ),
+            torch.nn.ReLU(),
             torch.nn.ConvTranspose3d(
                 in_channels=hidden_units,
                 out_channels=num_outputs,
                 kernel_size=(output_timesteps, patch_size, patch_size),
             ),
         )
-        self.loss = torch.nn.MSELoss()
+        self.loss = torch.nn.SmoothL1Loss()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.to(self.device)
 
     def forward(self, x: torch.Tensor):
         return self.layers(x)
+
+
+def std_mean(dataset: Dataset) -> Tuple[torch.Tensor, torch.Tensor]:
+    num_channels = dataset[0][0].shape[0]
+    total_sum = torch.zeros([num_channels])
+    squared_sum = torch.zeros([num_channels])
+    for inputs, _ in dataset:
+        total_sum += torch.mean(inputs, dim=[1, 2, 3])
+        squared_sum += torch.mean(inputs**2, dim=[1, 2, 3])
+    mean = total_sum / len(dataset)
+    std = (squared_sum / len(dataset) - mean**2) ** 0.5
+    return (std, mean)
 
 
 def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, Dataset]:
@@ -147,7 +179,13 @@ def run(
     print(f"Train dataset contains {len(train_data)} examples")
     print(f"Test dataset contains {len(test_data)} examples")
 
+    (std, mean) = std_mean(train_data)
+    print(f"std: {std.numpy()}")
+    print(f"mean: {mean.numpy()}")
+
     model = FullyConvolutionalNetwork(
+        std=std,
+        mean=mean,
         num_inputs=17,
         num_outputs=1,
         patch_size=patch_size,
@@ -171,8 +209,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--model-path", required=True)
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--train-test-ratio", type=float, default=0.9)
     parser.add_argument("--patch-size", type=int, default=16)
     parser.add_argument("--input-timesteps", type=int, default=3)
