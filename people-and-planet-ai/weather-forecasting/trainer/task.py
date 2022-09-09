@@ -55,7 +55,7 @@ class Model(torch.nn.Module):
         self,
         std: torch.Tensor,
         mean: torch.Tensor,
-        patch_size: int,
+        kernel_size: int,
         hidden_units: int = 8,
     ):
         super(Model, self).__init__()
@@ -65,13 +65,13 @@ class Model(torch.nn.Module):
             torch.nn.Conv3d(
                 in_channels=17,
                 out_channels=hidden_units,
-                kernel_size=(3, patch_size, patch_size),
+                kernel_size=(3, kernel_size, kernel_size),
             ),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose3d(
                 in_channels=hidden_units,
                 out_channels=1,
-                kernel_size=(2, patch_size, patch_size),
+                kernel_size=(2, kernel_size, kernel_size),
             ),
         )
         self.loss = torch.nn.SmoothL1Loss()
@@ -167,7 +167,7 @@ def fit(
 def run(
     data_path: str,
     model_path: str,
-    patch_size: int,
+    kernel_size: int,
     epochs: int = 100,
     batch_size: int = 8,
     train_test_ratio: float = 0.8,
@@ -183,7 +183,7 @@ def run(
     print(f"Test dataset mean: {mean.shape}")
     print(mean)
 
-    model = Model(std, mean, patch_size)
+    model = Model(std, mean, kernel_size)
     print("Model:")
     print(model)
     print(f"Device: {model.device}")
@@ -199,7 +199,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--model-path", required=True)
-    parser.add_argument("--patch-size", type=int, default=16)
+    parser.add_argument("--kernel-size", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--train-test-ratio", type=float, default=0.8)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     run(
         data_path=args.data_path,
         model_path=args.model_path,
-        patch_size=args.patch_size,
+        kernel_size=args.kernel_size,
         epochs=args.epochs,
         batch_size=args.batch_size,
         train_test_ratio=args.train_test_ratio,
