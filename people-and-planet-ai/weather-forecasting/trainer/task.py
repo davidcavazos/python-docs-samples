@@ -44,12 +44,8 @@ class Normalize(torch.nn.Module):
         self.std = std
         self.mean = mean
 
-    def forward(self, inputs):
-        # scaled = (inputs - mean) / std
-        shape = [inputs.shape[1]] + [1] * len(inputs.shape[2:])
-        return inputs.map_(self.mean.reshape(shape), torch.sub).map_(
-            self.std.reshape(shape), torch.div
-        )
+    def forward(self, x):
+        return (x - self.mean) / self.std
 
 
 class FullyConvolutionalNetwork(torch.nn.Module):
@@ -89,11 +85,12 @@ class FullyConvolutionalNetwork(torch.nn.Module):
 
 def std_mean(dataset: Dataset) -> Tuple[torch.Tensor, torch.Tensor]:
     num_channels = dataset[0][0].shape[0]
-    total_sum = torch.zeros([num_channels])
-    squared_sum = torch.zeros([num_channels])
+    shape = [num_channels] + [1] * len(dataset[0][0].shape[1:])
+    total_sum = torch.zeros(shape)
+    squared_sum = torch.zeros(shape)
     for inputs, _ in dataset:
-        total_sum += torch.mean(inputs, dim=[1, 2, 3])
-        squared_sum += torch.mean(inputs**2, dim=[1, 2, 3])
+        total_sum += torch.mean(inputs)
+        squared_sum += torch.mean(inputs**2)
     mean = total_sum / len(dataset)
     std = (squared_sum / len(dataset) - mean**2) ** 0.5
     return (std, mean)
