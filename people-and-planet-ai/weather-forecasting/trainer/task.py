@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from glob import glob
-from typing import Tuple
+from typing import Optional, Tuple
 import os
 
 import numpy as np
@@ -48,36 +48,32 @@ class Normalize(torch.nn.Module):
         return (x - self.mean) / self.std
 
 
-class FullyConvolutionalNetwork(torch.nn.Module):
+class Model(torch.nn.Module):
     def __init__(
         self,
         std: torch.Tensor,
         mean: torch.Tensor,
-        num_inputs: int,
-        num_outputs: int,
         patch_size: int,
-        input_timesteps: int,
-        output_timesteps: int,
         hidden_units: int = 8,
     ):
-        super(FullyConvolutionalNetwork, self).__init__()
+        super(Model, self).__init__()
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.to(self.device)
         self.layers = torch.nn.Sequential(
-            Normalize(std, mean),
+            Normalize(std.to(self.device), mean.to(self.device)),
             torch.nn.Conv3d(
-                in_channels=num_inputs,
+                in_channels=17,
                 out_channels=hidden_units,
-                kernel_size=(input_timesteps, patch_size, patch_size),
+                kernel_size=(3, patch_size, patch_size),
             ),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose3d(
                 in_channels=hidden_units,
-                out_channels=num_outputs,
-                kernel_size=(output_timesteps, patch_size, patch_size),
+                out_channels=1,
+                kernel_size=(2, patch_size, patch_size),
             ),
         )
         self.loss = torch.nn.SmoothL1Loss()
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.to(self.device)
 
     def forward(self, x: torch.Tensor):
         return self.layers(x)
@@ -85,15 +81,17 @@ class FullyConvolutionalNetwork(torch.nn.Module):
 
 def std_mean(dataset: Dataset) -> Tuple[torch.Tensor, torch.Tensor]:
     num_channels = dataset[0][0].shape[0]
-    shape = [num_channels] + [1] * len(dataset[0][0].shape[1:])
-    total_sum = torch.zeros(shape)
-    squared_sum = torch.zeros(shape)
+    total_sum = torch.zeros([num_channels])
+    squared_sum = torch.zeros([num_channels])
     for inputs, _ in dataset:
-        total_sum += torch.mean(inputs)
-        squared_sum += torch.mean(inputs**2)
+        dimensions = list(range(1, len(inputs.shape)))
+        total_sum += torch.mean(inputs, dimensions)
+        squared_sum += torch.mean(inputs**2, dimensions)
     mean = total_sum / len(dataset)
     std = (squared_sum / len(dataset) - mean**2) ** 0.5
-    return (std, mean)
+
+    shape = [num_channels] + [1] * len(dataset[0][0].shape[1:])
+    return (std.reshape(shape), mean.reshape(shape))
 
 
 def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, Dataset]:
@@ -103,10 +101,10 @@ def split_dataset(dataset: Dataset, train_test_ratio: float) -> Tuple[Dataset, D
 
 
 def train(
-    model: FullyConvolutionalNetwork,
+    model: Model,
     dataset: Dataset,
     optimizer: Optimizer,
-    batch_size: int,
+    batch_size: int = 8,
 ) -> float:
     dataloader = DataLoader(
         dataset, batch_size, num_workers=os.cpu_count(), shuffle=True
@@ -129,7 +127,7 @@ def train(
     return total_loss / len(dataloader)
 
 
-def test(model: FullyConvolutionalNetwork, dataset: Dataset, batch_size: int) -> float:
+def test(model: Model, dataset: Dataset, batch_size: int = 8) -> float:
     dataloader = DataLoader(dataset, batch_size, num_workers=os.cpu_count())
     total_loss = 0.0
 
@@ -144,14 +142,17 @@ def test(model: FullyConvolutionalNetwork, dataset: Dataset, batch_size: int) ->
 
 
 def fit(
-    model: FullyConvolutionalNetwork,
+    model: Model,
     train_dataset: Dataset,
     test_dataset: Dataset,
-    optimizer: Optimizer,
-    batch_size: int,
-    epochs: int,
-) -> FullyConvolutionalNetwork:
-    print(f"Device: {model.device}")
+    epochs: int = 100,
+    batch_size: int = 8,
+    optimizer: Optional[Optimizer] = None,
+) -> Model:
+    optimizer = optimizer or torch.optim.Adam(model.parameters())
+    print("Optimizer:")
+    print(optimizer)
+
     for epoch in range(epochs):
         train_loss = train(model, train_dataset, optimizer, batch_size)
         test_loss = test(model, test_dataset, batch_size)
@@ -164,38 +165,28 @@ def fit(
 def run(
     data_path: str,
     model_path: str,
-    batch_size: int,
-    epochs: int,
-    train_test_ratio: float,
     patch_size: int,
-    input_timesteps: int,
-    output_timesteps: int,
+    epochs: int = 100,
+    batch_size: int = 8,
+    train_test_ratio: float = 0.8,
 ):
     dataset = WeatherDataset(data_path)
-    (train_data, test_data) = split_dataset(dataset, train_test_ratio)
-    print(f"Train dataset contains {len(train_data)} examples")
-    print(f"Test dataset contains {len(test_data)} examples")
+    (train_dataset, test_dataset) = split_dataset(dataset, train_test_ratio)
+    print(f"Train dataset contains {len(train_dataset)} examples")
+    print(f"Test dataset contains {len(test_dataset)} examples")
 
-    (std, mean) = std_mean(train_data)
-    print(f"std: {std.numpy()}")
-    print(f"mean: {mean.numpy()}")
+    (std, mean) = std_mean(train_dataset)
+    print(f"Train dataset std: {std.shape}")
+    print(std)
+    print(f"Test dataset mean: {mean.shape}")
+    print(mean)
 
-    model = FullyConvolutionalNetwork(
-        std=std,
-        mean=mean,
-        num_inputs=17,
-        num_outputs=1,
-        patch_size=patch_size,
-        input_timesteps=input_timesteps,
-        output_timesteps=output_timesteps,
-    )
-    print(f"Model device: {model.device}")
+    model = Model(std, mean, patch_size)
+    print("Model:")
     print(model)
+    print(f"Device: {model.device}")
 
-    optimizer = torch.optim.Adam(model.parameters())
-    print(optimizer)
-    trained_model = fit(model, train_data, test_data, optimizer, batch_size, epochs)
-
+    trained_model = fit(model, train_dataset, test_dataset, epochs, batch_size)
     torch.save(trained_model, model_path)
     print(f"Model saved to path: {model_path}")
 
@@ -206,21 +197,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--model-path", required=True)
-    parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--train-test-ratio", type=float, default=0.9)
     parser.add_argument("--patch-size", type=int, default=16)
-    parser.add_argument("--input-timesteps", type=int, default=3)
-    parser.add_argument("--output-timesteps", type=int, default=2)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--train-test-ratio", type=float, default=0.8)
     args = parser.parse_args()
 
     run(
         data_path=args.data_path,
         model_path=args.model_path,
-        batch_size=args.batch_size,
-        epochs=args.epochs,
-        train_test_ratio=args.train_test_ratio,
         patch_size=args.patch_size,
-        input_timesteps=args.input_timesteps,
-        output_timesteps=args.output_timesteps,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        train_test_ratio=args.train_test_ratio,
     )
