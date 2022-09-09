@@ -39,13 +39,15 @@ class WeatherDataset(Dataset):
 class Normalize(torch.nn.Module):
     """Preprocessing normalization layer."""
 
-    def __init__(self, std: torch.Tensor, mean: torch.Tensor):
+    def __init__(self, std: torch.Tensor, mean: torch.Tensor, device: str):
         super().__init__()
         self.std = std
         self.mean = mean
+        self.device = device
 
     def forward(self, x):
-        return (x - self.mean) / self.std
+        (std, mean) = (self.std.to(self.device), self.mean.to(self.device))
+        return (x - mean) / std
 
 
 class Model(torch.nn.Module):
@@ -58,9 +60,8 @@ class Model(torch.nn.Module):
     ):
         super(Model, self).__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.to(self.device)
         self.layers = torch.nn.Sequential(
-            Normalize(std.to(self.device), mean.to(self.device)),
+            Normalize(std, mean, self.device),
             torch.nn.Conv3d(
                 in_channels=17,
                 out_channels=hidden_units,
@@ -74,6 +75,7 @@ class Model(torch.nn.Module):
             ),
         )
         self.loss = torch.nn.SmoothL1Loss()
+        self.to(self.device)
 
     def forward(self, x: torch.Tensor):
         return self.layers(x)
@@ -157,7 +159,7 @@ def fit(
         train_loss = train(model, train_dataset, optimizer, batch_size)
         test_loss = test(model, test_dataset, batch_size)
         print(
-            f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss:.2f} - test_loss: {test_loss:.2f}"
+            f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss} - test_loss: {test_loss}"
         )
     return model
 
