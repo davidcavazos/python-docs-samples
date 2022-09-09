@@ -152,8 +152,7 @@ def fit(
     optimizer: Optional[Optimizer] = None,
 ) -> Model:
     optimizer = optimizer or torch.optim.Adam(model.parameters())
-    print("Optimizer:")
-    print(optimizer)
+    print(f"Optimizer: {optimizer}")
 
     for epoch in range(epochs):
         train_loss = train(model, train_dataset, optimizer, batch_size)
@@ -172,6 +171,14 @@ def run(
     batch_size: int = 8,
     train_test_ratio: float = 0.8,
 ):
+    print(f"data_path: {data_path}")
+    print(f"model_path: {model_path}")
+    print(f"kernel_size: {kernel_size}")
+    print(f"epochs: {epochs}")
+    print(f"batch_size: {batch_size}")
+    print(f"train_test_ratio: {train_test_ratio}")
+    print("-" * 40)
+
     dataset = WeatherDataset(data_path)
     (train_dataset, test_dataset) = split_dataset(dataset, train_test_ratio)
     print(f"Train dataset contains {len(train_dataset)} examples")
@@ -184,7 +191,6 @@ def run(
     print(mean)
 
     model = Model(std, mean, kernel_size)
-    print("Model:")
     print(model)
     print(f"Device: {model.device}")
 

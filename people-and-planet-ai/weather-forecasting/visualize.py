@@ -16,18 +16,12 @@ def render_classifications(values: np.ndarray, palette: List[str]) -> np.ndarray
     # Create a color map from a hex color palette.
     xs = np.linspace(0, len(palette), 256)
     indices = np.arange(len(palette))
-    color_map = (
-        np.array(
-            [
-                np.interp(xs, indices, [int(c[0:2], 16) for c in palette]),  # red
-                np.interp(xs, indices, [int(c[2:4], 16) for c in palette]),  # green
-                np.interp(xs, indices, [int(c[4:6], 16) for c in palette]),  # blue
-            ]
-        )
-        .astype(np.uint8)
-        .transpose()
-    )
 
+    red = np.interp(xs, indices, [int(c[0:2], 16) for c in palette])
+    green = np.interp(xs, indices, [int(c[2:4], 16) for c in palette])
+    blue = np.interp(xs, indices, [int(c[4:6], 16) for c in palette])
+
+    color_map = np.array([red, green, blue]).astype(np.uint8).transpose()
     color_indices = (values / len(palette) * 255).astype(np.uint8)
     return np.take(color_map, color_indices, axis=0)
 
