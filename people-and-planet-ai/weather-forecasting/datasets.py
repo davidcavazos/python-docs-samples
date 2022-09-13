@@ -194,7 +194,7 @@ def run(
             pipeline
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
-            | "Reshuffle" >> beam.Reshuffle()
+            # | "Reshuffle" >> beam.Reshuffle()
             | "Get example" >> beam.MapTuple(get_training_example, patch_size)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
