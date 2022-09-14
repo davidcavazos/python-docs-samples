@@ -27,6 +27,21 @@ import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
 import pandas as pd
 
+INPUTS = {
+    "NOAA/GOES/16/MCMIPF": [f"CMI_C{i:02}" for i in range(1, 16 + 1)],
+    "NASA/GPM_L3/IMERG_V06": ["precipitationCal"],
+}
+
+LABELS = {
+    "NASA/GPM_L3/IMERG_V06": ["precipitationCal"],
+}
+
+SCALE = 10000
+WINDOW = timedelta(hours=1)
+
+START_DATE = datetime(2017, 7, 10)
+END_DATE = datetime.now() - timedelta(days=1)
+
 
 class Bounds(NamedTuple):
     west: float
@@ -43,22 +58,6 @@ class Point(NamedTuple):
 class Example(NamedTuple):
     inputs: np.ndarray
     labels: np.ndarray
-
-
-INPUTS = {
-    "NOAA/GOES/16/MCMIPF": [f"CMI_C{i:02}" for i in range(1, 16 + 1)],
-    "NASA/GPM_L3/IMERG_V06": ["precipitationCal"],
-}
-
-LABELS = {
-    "NASA/GPM_L3/IMERG_V06": ["precipitationCal"],
-}
-
-SCALE = 10000
-WINDOW = timedelta(hours=1)
-
-START_DATE = datetime(2017, 7, 10)
-END_DATE = datetime.now() - timedelta(days=1)
 
 
 def ee_init() -> None:
@@ -175,10 +174,20 @@ def run(
     num_points: int,
     bounds: Bounds,
     patch_size: int,
+    max_requests: int = 20,
     beam_args: Optional[List[str]] = None,
 ):
     import apache_beam as beam
     from apache_beam.options.pipeline_options import PipelineOptions
+
+    @beam.ptransform_fn
+    def WithLimit(pcollection, max_concurrent_calls: int):
+        return (
+            pcollection
+            | f"Group into {max_concurrent_calls}"
+            >> beam.GroupBy(lambda _: random.randint(0, max_concurrent_calls - 1))
+            | "Flatten groups" >> beam.FlatMapTuple(lambda _, values: values)
+        )
 
     random_dates = [
         START_DATE + (END_DATE - START_DATE) * random.random() for _ in range(num_dates)
@@ -194,8 +203,9 @@ def run(
             pipeline
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
-            # | "Reshuffle" >> beam.Reshuffle()
+            | "Reshuffle" >> beam.Reshuffle()
             | "Get example" >> beam.MapTuple(get_training_example, patch_size)
+            | f"Limit {max_requests}" >> WithLimit(max_requests)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
         )
@@ -215,6 +225,7 @@ if __name__ == "__main__":
     parser.add_argument("--east", type=float, default=-66.5)
     parser.add_argument("--north", type=float, default=49.1)
     parser.add_argument("--patch-size", type=int, default=64)
+    parser.add_argument("--max-requests", type=int, default=20)
     args, beam_args = parser.parse_known_args()
 
     run(
@@ -223,5 +234,6 @@ if __name__ == "__main__":
         num_points=args.num_points,
         bounds=Bounds(args.west, args.south, args.east, args.north),
         patch_size=args.patch_size,
+        max_requests=args.max_requests,
         beam_args=beam_args,
     )
