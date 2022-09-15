@@ -166,14 +166,14 @@ def fit(
 def load_model(file_handler: BinaryIO) -> Model:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = torch.load(file_handler, device)
+    model.device = device
     model.eval()
     return model
 
 
 def predict(model: Model, inputs: np.ndarray) -> np.ndarray:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     with torch.no_grad():
-        predictions = model(torch.from_numpy(inputs).to(device))
+        predictions = model(torch.from_numpy(inputs).to(model.device))
     return predictions.numpy()
 
 
