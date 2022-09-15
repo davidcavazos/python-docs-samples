@@ -126,16 +126,27 @@ def sample_points(
         yield Point(point["lat"], point["lon"])
 
 
-def get_training_example(date: datetime, point: Point, patch_size: int = 64) -> Example:
-    def patch_sequence(schema: Dict[str, List[str]], hours: List[int]) -> np.ndarray:
-        dates = [date + timedelta(hours=h) for h in hours]
-        images = [get_image(d, schema, WINDOW) for d in dates]
-        return get_patch_sequence(images, point, patch_size, SCALE)
+def get_input_sequence(
+    date: datetime, point: Point, patch_size: int, num_hours: int
+) -> np.ndarray:
+    dates = [date + timedelta(hours=h) for h in range(1 - num_hours, 1)]
+    images = [get_image(d, INPUTS, WINDOW) for d in dates]
+    return get_patch_sequence(images, point, patch_size, SCALE)
 
+
+def get_label_sequence(
+    date: datetime, point: Point, patch_size: int, num_hours: int
+) -> np.ndarray:
+    dates = [date + timedelta(hours=h) for h in range(1, num_hours + 1)]
+    images = [get_image(d, LABELS, WINDOW) for d in dates]
+    return get_patch_sequence(images, point, patch_size, SCALE)
+
+
+def get_training_example(date: datetime, point: Point, patch_size: int = 64) -> Example:
     ee_init()
     return Example(
-        patch_sequence(INPUTS, [-2, -1, 0]),
-        patch_sequence(LABELS, [1, 2]),
+        get_input_sequence(date, point, patch_size, 3),
+        get_label_sequence(date, point, patch_size, 2),
     )
 
 
