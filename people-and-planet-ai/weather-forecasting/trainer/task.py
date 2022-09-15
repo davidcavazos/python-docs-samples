@@ -170,6 +170,13 @@ def load_model(file_handler: BinaryIO) -> Model:
     return model
 
 
+def predict(model: Model, inputs: np.ndarray) -> np.ndarray:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    with torch.no_grad():
+        predictions = model(torch.from_numpy(inputs).to(device))
+    return predictions.numpy()
+
+
 def run(
     data_path: str,
     model_path: str,
