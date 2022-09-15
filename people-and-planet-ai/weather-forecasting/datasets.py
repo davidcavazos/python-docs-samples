@@ -204,7 +204,7 @@ def run(
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
             | "Reshuffle" >> beam.Reshuffle()
-            | f"Limit {max_requests}" >> WithLimit(max_requests)
+            # | f"Limit {max_requests}" >> WithLimit(max_requests)
             | "Get example" >> beam.MapTuple(get_training_example, patch_size)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
