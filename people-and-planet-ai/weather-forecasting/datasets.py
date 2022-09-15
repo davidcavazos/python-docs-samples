@@ -174,20 +174,11 @@ def run(
     num_points: int,
     bounds: Bounds,
     patch_size: int,
-    max_requests: int = 20,
+    max_requests: int,
     beam_args: Optional[List[str]] = None,
 ):
     import apache_beam as beam
     from apache_beam.options.pipeline_options import PipelineOptions
-
-    @beam.ptransform_fn
-    def WithLimit(pcollection, max_concurrent_calls: int):
-        return (
-            pcollection
-            | f"Group into {max_concurrent_calls}"
-            >> beam.GroupBy(lambda _: random.randint(0, max_concurrent_calls - 1))
-            | "Flatten groups" >> beam.FlatMapTuple(lambda _, values: values)
-        )
 
     random_dates = [
         START_DATE + (END_DATE - START_DATE) * random.random() for _ in range(num_dates)
@@ -197,6 +188,7 @@ def run(
         beam_args,
         save_main_session=True,
         requirements_file="requirements.txt",
+        max_num_workers=max_requests,
     )
     with beam.Pipeline(options=beam_options) as pipeline:
         (
@@ -204,7 +196,6 @@ def run(
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
             | "Reshuffle" >> beam.Reshuffle()
-            # | f"Limit {max_requests}" >> WithLimit(max_requests)
             | "Get example" >> beam.MapTuple(get_training_example, patch_size)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
@@ -218,8 +209,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-path", required=True)
-    parser.add_argument("--num-dates", type=int, default=100)
-    parser.add_argument("--num-points", type=int, default=100)
+    parser.add_argument("--num-dates", type=int, default=20)
+    parser.add_argument("--num-points", type=int, default=10)
     parser.add_argument("--west", type=float, default=-125.3)
     parser.add_argument("--south", type=float, default=27.4)
     parser.add_argument("--east", type=float, default=-66.5)
