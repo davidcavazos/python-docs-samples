@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from glob import glob
-from typing import Optional, Tuple
+from typing import Optional, Tuple, BinaryIO
 import os
 
 import numpy as np
@@ -160,6 +160,13 @@ def fit(
         print(
             f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss} - test_loss: {test_loss}"
         )
+    return model
+
+
+def load_model(file_handler: BinaryIO) -> Model:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = torch.load(file_handler, device)
+    model.eval()
     return model
 
 
