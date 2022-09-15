@@ -150,11 +150,13 @@ def get_label_sequence(
     return get_patch_sequence(images, point, patch_size, SCALE)
 
 
-def get_training_example(date: datetime, point: Point, patch_size: int = 64) -> Example:
+def get_training_example(
+    date: datetime, point: Point, patch_size: int = 64, num_hours: int = 2
+) -> Example:
     ee_init()
     return Example(
-        get_input_sequence(date, point, patch_size, 3),
-        get_label_sequence(date, point, patch_size, 2),
+        get_input_sequence(date, point, patch_size, num_hours + 1),
+        get_label_sequence(date, point, patch_size, num_hours),
     )
 
 
