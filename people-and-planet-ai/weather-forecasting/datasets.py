@@ -99,10 +99,18 @@ def get_image(
     return ee.Image(images)
 
 
+def get_input_image(date: datetime) -> ee.Image:
+    return get_image(date, INPUTS, WINDOW)
+
+
+def get_label_image(date: datetime) -> ee.Image:
+    return get_image(date, LABELS, WINDOW)
+
+
 def sample_labels(
     date: datetime, num_points: int, bounds: Bounds
 ) -> Iterable[Tuple[datetime, Point]]:
-    image = get_image(date, LABELS, WINDOW)
+    image = get_label_image(date)
     for point in sample_points(image, num_points, bounds, SCALE):
         yield (date, point)
 
@@ -130,7 +138,7 @@ def get_input_sequence(
     date: datetime, point: Point, patch_size: int, num_hours: int
 ) -> np.ndarray:
     dates = [date + timedelta(hours=h) for h in range(1 - num_hours, 1)]
-    images = [get_image(d, INPUTS, WINDOW) for d in dates]
+    images = [get_input_image(d) for d in dates]
     return get_patch_sequence(images, point, patch_size, SCALE)
 
 
@@ -138,7 +146,7 @@ def get_label_sequence(
     date: datetime, point: Point, patch_size: int, num_hours: int
 ) -> np.ndarray:
     dates = [date + timedelta(hours=h) for h in range(1, num_hours + 1)]
-    images = [get_image(d, LABELS, WINDOW) for d in dates]
+    images = [get_label_image(d) for d in dates]
     return get_patch_sequence(images, point, patch_size, SCALE)
 
 
