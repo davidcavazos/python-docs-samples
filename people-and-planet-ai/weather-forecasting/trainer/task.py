@@ -164,9 +164,9 @@ def fit(
 def run(
     data_path: str,
     model_path: str,
-    kernel_size: int,
+    kernel_size: int = 5,
     epochs: int = 100,
-    batch_size: int = 8,
+    batch_size: int = 64,
     train_test_ratio: float = 0.8,
 ):
     print(f"data_path: {data_path}")
@@ -184,9 +184,9 @@ def run(
 
     (std, mean) = std_mean(train_dataset)
     print(f"Train dataset std: {std.shape}")
-    print(std)
+    print(std.reshape(std.shape[0]))
     print(f"Test dataset mean: {mean.shape}")
-    print(mean)
+    print(mean.reshape(mean.shape[0]))
 
     print(f"Device: {DEVICE}")
 
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--model-path", required=True)
     parser.add_argument("--kernel-size", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--train-test-ratio", type=float, default=0.8)
     args = parser.parse_args()
 
