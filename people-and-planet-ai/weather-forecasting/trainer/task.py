@@ -156,7 +156,7 @@ def fit(
         train_loss = train(model, train_dataset, optimizer, batch_size)
         test_loss = test(model, test_dataset, batch_size)
         print(
-            f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss} - test_loss: {test_loss}"
+            f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss:.4f} - test_loss: {test_loss:.4f}"
         )
     return model
 
