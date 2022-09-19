@@ -12,26 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
 from typing import Iterable
 
 import nbformat
 from nbclient import NotebookClient
 
 
-def patch_code_cell(source: str) -> Iterable[str]:
-    if "from google.colab import auth" in source:
-        yield "import sys"
-        yield "from unittest.mock import Mock"
-        yield "sys.modules['google.colab'] = Mock()"
-    yield source
+prelude = [
+    "from unittest.mock import Mock",
+    "import sys",
+    "sys.modules['google.colab'] = Mock()",
+    "exit = Mock()",
+]
 
 
-def on_cell_execute(cell: nbformat.NotebookNode, cell_index: int):
-    cell["source"] = "\n".join(patch_code_cell(cell["source"]))
+# https://regex101.com/r/auHETK/1
+FILTER_SHELL_COMMANDS = re.compile(r"^!(?:[^\n]+\\\n)*(?:[^\n]+)$", re.MULTILINE)
+
+
+def on_cell_execute(cell_index: int, cell: nbformat.NotebookNode):
+    cell["source"] = FILTER_SHELL_COMMANDS.sub("", cell["source"])
 
 
 def test_notebook():
     nb = nbformat.read("README.ipynb", as_version=4)
+    nb.cells = [nbformat.v4.new_code_cell("\n".join(prelude))] + nb.cells
     client = NotebookClient(nb, timeout=600)
     client.on_cell_execute = on_cell_execute
     client.execute()

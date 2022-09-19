@@ -25,7 +25,6 @@ from google.api_core import retry, exceptions
 import google.auth
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
-import pandas as pd
 
 INPUTS = {
     "NOAA/GOES/16/MCMIPF": [f"CMI_C{i:02}" for i in range(1, 16 + 1)],
@@ -111,13 +110,13 @@ def sample_labels(
     date: datetime, num_points: int, bounds: Bounds
 ) -> Iterable[Tuple[datetime, Point]]:
     image = get_label_image(date)
-    for point in sample_points(image, num_points, bounds, SCALE):
-        yield (date, point)
+    for lat, lon in sample_points(image, num_points, bounds, SCALE):
+        yield (date, Point(lat, lon))
 
 
 def sample_points(
     image: ee.Image, num_points: int, bounds: Bounds, scale: int
-) -> Iterable[Point]:
+) -> np.ndarray:
     def get_coordinates(point: ee.Feature) -> ee.Feature:
         coords = point.geometry().coordinates()
         return ee.Feature(None, {"lat": coords.get(1), "lon": coords.get(0)})
@@ -129,9 +128,7 @@ def sample_points(
         geometries=True,
     )
     url = points.map(get_coordinates).getDownloadURL("CSV", ["lat", "lon"])
-    df = pd.read_csv(io.BytesIO(ee_fetch(url)))
-    for point in df.to_dict(orient="records"):
-        yield Point(point["lat"], point["lon"])
+    return np.genfromtxt(io.BytesIO(ee_fetch(url)), delimiter=",", skip_header=1)
 
 
 def get_input_sequence(
