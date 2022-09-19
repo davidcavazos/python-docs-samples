@@ -21,6 +21,8 @@ import torch
 from torch.optim import Optimizer
 from torch.utils.data import Dataset, DataLoader, random_split
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 class WeatherDataset(Dataset):
     def __init__(self, data_path: str):
@@ -39,15 +41,13 @@ class WeatherDataset(Dataset):
 class Normalize(torch.nn.Module):
     """Preprocessing normalization layer."""
 
-    def __init__(self, std: torch.Tensor, mean: torch.Tensor, device: str):
+    def __init__(self, std: torch.Tensor, mean: torch.Tensor):
         super().__init__()
-        self.std = std
-        self.mean = mean
-        self.device = device
+        self.std = std.to(DEVICE)
+        self.mean = mean.to(DEVICE)
 
     def forward(self, x):
-        (std, mean) = (self.std.to(self.device), self.mean.to(self.device))
-        return (x - mean) / std
+        return (x - self.mean) / self.std
 
 
 class Model(torch.nn.Module):
@@ -59,9 +59,8 @@ class Model(torch.nn.Module):
         hidden_units: int = 8,
     ):
         super(Model, self).__init__()
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.layers = torch.nn.Sequential(
-            Normalize(std, mean, self.device),
+            Normalize(std, mean),
             torch.nn.Conv3d(
                 in_channels=17,
                 out_channels=hidden_units,
@@ -75,7 +74,6 @@ class Model(torch.nn.Module):
             ),
         )
         self.loss = torch.nn.SmoothL1Loss()
-        self.to(self.device)
 
     def forward(self, x: torch.Tensor):
         return self.layers(x)
@@ -115,7 +113,7 @@ def train(
 
     model.train()
     for inputs, labels in dataloader:
-        (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
+        (inputs, labels) = (inputs.to(DEVICE), labels.to(DEVICE))
 
         # Compute prediction error
         predictions = model(inputs)
@@ -136,7 +134,7 @@ def test(model: Model, dataset: Dataset, batch_size: int = 8) -> float:
     model.eval()
     with torch.no_grad():
         for inputs, labels in dataloader:
-            (inputs, labels) = (inputs.to(model.device), labels.to(model.device))
+            (inputs, labels) = (inputs.to(DEVICE), labels.to(DEVICE))
 
             predictions = model(inputs)
             total_loss += model.loss(predictions, labels).item()
@@ -161,20 +159,6 @@ def fit(
             f"Epoch [{epoch + 1}/{epochs}] -- loss: {train_loss} - test_loss: {test_loss}"
         )
     return model
-
-
-def load_model(file_handler: BinaryIO) -> Model:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = torch.load(file_handler, device)
-    model.device = device
-    model.eval()
-    return model
-
-
-def predict(model: Model, inputs: np.ndarray) -> np.ndarray:
-    with torch.no_grad():
-        predictions = model(torch.from_numpy(inputs).to(model.device))
-    return predictions.numpy()
 
 
 def run(
@@ -204,9 +188,10 @@ def run(
     print(f"Test dataset mean: {mean.shape}")
     print(mean)
 
-    model = Model(std, mean, kernel_size)
+    print(f"Device: {DEVICE}")
+
+    model = Model(std, mean, kernel_size).to(DEVICE)
     print(model)
-    print(f"Device: {model.device}")
 
     trained_model = fit(model, train_dataset, test_dataset, epochs, batch_size)
     torch.save(trained_model, model_path)
