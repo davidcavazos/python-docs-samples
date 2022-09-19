@@ -164,16 +164,16 @@ def fit(
 def run(
     data_path: str,
     model_path: str,
-    kernel_size: int = 5,
     epochs: int = 100,
     batch_size: int = 64,
+    kernel_size: int = 5,
     train_test_ratio: float = 0.8,
 ):
     print(f"data_path: {data_path}")
     print(f"model_path: {model_path}")
-    print(f"kernel_size: {kernel_size}")
     print(f"epochs: {epochs}")
     print(f"batch_size: {batch_size}")
+    print(f"kernel_size: {kernel_size}")
     print(f"train_test_ratio: {train_test_ratio}")
     print("-" * 40)
 
@@ -204,17 +204,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--model-path", required=True)
-    parser.add_argument("--kernel-size", type=int, default=5)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--kernel-size", type=int, default=5)
     parser.add_argument("--train-test-ratio", type=float, default=0.8)
     args = parser.parse_args()
 
     run(
         data_path=args.data_path,
         model_path=args.model_path,
-        kernel_size=args.kernel_size,
         epochs=args.epochs,
         batch_size=args.batch_size,
+        kernel_size=args.kernel_size,
         train_test_ratio=args.train_test_ratio,
     )
