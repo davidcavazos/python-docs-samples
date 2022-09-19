@@ -185,7 +185,7 @@ def run(
     (std, mean) = std_mean(train_dataset)
     print(f"Train dataset std: {std.shape}")
     print(std.reshape(std.shape[0]))
-    print(f"Test dataset mean: {mean.shape}")
+    print(f"Train dataset mean: {mean.shape}")
     print(mean.reshape(mean.shape[0]))
 
     print(f"Device: {DEVICE}")
