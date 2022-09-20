@@ -104,7 +104,7 @@ def train(
     model: Model,
     dataset: Dataset,
     optimizer: Optimizer,
-    batch_size: int = 8,
+    batch_size: int = 512,
 ) -> float:
     dataloader = DataLoader(
         dataset, batch_size, num_workers=os.cpu_count(), shuffle=True
@@ -165,7 +165,7 @@ def run(
     data_path: str,
     model_path: str,
     epochs: int = 100,
-    batch_size: int = 64,
+    batch_size: int = 512,
     kernel_size: int = 5,
     train_test_ratio: float = 0.8,
 ):
