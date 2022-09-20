@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from datetime import datetime, timedelta
-from typing import Callable, Dict, Iterable, List, Optional, NamedTuple, Tuple, TypeVar
+from typing import Dict, Iterable, List, Optional, NamedTuple, Tuple
 import io
 import logging
 import random
