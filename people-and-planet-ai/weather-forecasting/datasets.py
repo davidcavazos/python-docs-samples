@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, NamedTuple, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, NamedTuple, Tuple, TypeVar
 import io
 import logging
 import random
@@ -148,14 +148,20 @@ def get_label_sequence(
 
 
 def get_training_example(
+    date: datetime, point: Point, patch_size: int, num_hours: int = 2
+) -> Example:
+    ee_init()
+    return Example(
+        get_input_sequence(date, point, patch_size, num_hours + 1),
+        get_label_sequence(date, point, patch_size, num_hours),
+    )
+
+
+def try_get_training_example(
     date: datetime, point: Point, patch_size: int = 64, num_hours: int = 2
 ) -> Iterable[Example]:
-    ee_init()
     try:
-        yield Example(
-            get_input_sequence(date, point, patch_size, num_hours + 1),
-            get_label_sequence(date, point, patch_size, num_hours),
-        )
+        yield get_training_example(date, point, patch_size, num_hours)
     except Exception as e:
         logging.exception(e)
 
@@ -217,7 +223,7 @@ def run(
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
             | "Reshuffle" >> beam.Reshuffle()
-            | "Get example" >> beam.FlatMapTuple(get_training_example, patch_size)
+            | "Get example" >> beam.FlatMapTuple(try_get_training_example, patch_size)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
         )
