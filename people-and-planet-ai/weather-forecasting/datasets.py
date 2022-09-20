@@ -149,12 +149,15 @@ def get_label_sequence(
 
 def get_training_example(
     date: datetime, point: Point, patch_size: int = 64, num_hours: int = 2
-) -> Example:
+) -> Iterable[Example]:
     ee_init()
-    return Example(
-        get_input_sequence(date, point, patch_size, num_hours + 1),
-        get_label_sequence(date, point, patch_size, num_hours),
-    )
+    try:
+        yield Example(
+            get_input_sequence(date, point, patch_size, num_hours + 1),
+            get_label_sequence(date, point, patch_size, num_hours),
+        )
+    except Exception as e:
+        logging.exception(e)
 
 
 def get_patch_sequence(
@@ -214,7 +217,7 @@ def run(
             | "Random dates" >> beam.Create(random_dates)
             | "Sample labels" >> beam.FlatMap(sample_labels, num_points, bounds)
             | "Reshuffle" >> beam.Reshuffle()
-            | "Get example" >> beam.MapTuple(get_training_example, patch_size)
+            | "Get example" >> beam.FlatMapTuple(get_training_example, patch_size)
             | "Write NPZ files" >> beam.Map(write_npz_file, output_path)
             | "Log files" >> beam.Map(logging.info)
         )
