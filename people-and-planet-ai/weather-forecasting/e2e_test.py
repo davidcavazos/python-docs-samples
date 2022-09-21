@@ -47,10 +47,6 @@ aiplatform.CustomTrainingJob.run = Mock()
 
 @pytest.fixture(scope="session")
 def bucket_name() -> str:
-    # TODO: REMOVE THIS
-    yield "dcavazos-lyra"
-    return
-
     storage_client = storage.Client()
 
     bucket_name = f"{NAME.replace('/', '-')}-{UUID}"
