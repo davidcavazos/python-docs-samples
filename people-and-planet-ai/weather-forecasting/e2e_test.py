@@ -68,17 +68,15 @@ def test_notebook(bucket_name: str) -> None:
     try:
         subprocess.run(
             [
-                # "ls",
                 "python",
                 "datasets.py",
                 f"--output-path=gs://{bucket_name}/weather/data",
                 "--num-dates=1",
                 "--num-points=1",
                 "--runner=DataflowRunner",
-                # TODO: Make this fail to see if we get a good stack trace
-                # f"--project={PROJECT}",
-                # f"--region={LOCATION}",
-                # f"--temp_location=gs://{bucket_name}/temp",
+                f"--project={PROJECT}",
+                f"--region={LOCATION}",
+                f"--temp_location=gs://{bucket_name}/temp",
                 # Parameters for testing only, not used in the notebook.
                 f"--job_name={NAME.replace('/', '-')}-{UUID}",
             ],
