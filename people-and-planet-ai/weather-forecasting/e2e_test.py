@@ -64,7 +64,7 @@ def bucket_name() -> str:
 
 def test_notebook(bucket_name: str) -> None:
     # Create the datasets since this step is disabled from testing the notebook.
-    subprocess.check_call(
+    subprocess.run(
         [
             "python",
             "datasets.py",
@@ -79,6 +79,9 @@ def test_notebook(bucket_name: str) -> None:
             # Parameters for testing only, not used in the notebook.
             f"--job_name={NAME.replace('/', '-')}-{UUID}",
         ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
     substitutions = {
