@@ -17,6 +17,7 @@ import os
 import platform
 import re
 import subprocess
+import sys
 from typing import Dict
 import uuid
 
@@ -64,25 +65,29 @@ def bucket_name() -> str:
 
 def test_notebook(bucket_name: str) -> None:
     # Create the datasets since this step is disabled from testing the notebook.
-    subprocess.run(
-        [
-            "python",
-            "datasets.py",
-            f"--output-path=gs://{bucket_name}/weather/data",
-            "--num-dates=1",
-            "--num-points=1",
-            "--runner=DataflowRunner",
-            # TODO: Make this fail to see if we get a good stack trace
-            # f"--project={PROJECT}",
-            # f"--region={LOCATION}",
-            # f"--temp_location=gs://{bucket_name}/temp",
-            # Parameters for testing only, not used in the notebook.
-            f"--job_name={NAME.replace('/', '-')}-{UUID}",
-        ],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        subprocess.run(
+            [
+                # "ls",
+                "python",
+                "datasets.py",
+                f"--output-path=gs://{bucket_name}/weather/data",
+                "--num-dates=1",
+                "--num-points=1",
+                "--runner=DataflowRunner",
+                # TODO: Make this fail to see if we get a good stack trace
+                # f"--project={PROJECT}",
+                # f"--region={LOCATION}",
+                # f"--temp_location=gs://{bucket_name}/temp",
+                # Parameters for testing only, not used in the notebook.
+                f"--job_name={NAME.replace('/', '-')}-{UUID}",
+            ],
+            check=True,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as e:
+        # Include the error message from the failed command.
+        raise Exception(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
 
     substitutions = {
         "project": PROJECT,
