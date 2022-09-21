@@ -1,3 +1,4 @@
+ipython==8.5.0
 nbclient==0.6.8
 pytest-xdist==2.5.0
 pytest==7.1.2
