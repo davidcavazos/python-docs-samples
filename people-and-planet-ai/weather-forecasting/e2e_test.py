@@ -128,5 +128,5 @@ def run_notebook(
     nb.cells = [nbformat.v4.new_code_cell(prelude)] + nb.cells
 
     # Run the notebook.
-    client = NotebookClient(nb)
+    client = NotebookClient(nb, kernel_name="python")
     client.execute()
