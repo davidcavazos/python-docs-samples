@@ -13,25 +13,26 @@
 # limitations under the License.
 
 from glob import glob
-from typing import Optional, Tuple, BinaryIO
 import os
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
 from torch.optim import Optimizer
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
+from typing_extensions import Self
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class WeatherDataset(Dataset):
-    def __init__(self, data_path: str):
+    def __init__(self: Self, data_path: str) -> None:
         self.files = glob(os.path.join(data_path, "**", "*.npz"), recursive=True)
 
-    def __len__(self) -> int:
+    def __len__(self: Self) -> int:
         return len(self.files)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self: Self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         with open(self.files[idx], "rb") as f:
             npz = np.load(f)
             (inputs, labels) = (npz["inputs"], npz["labels"])
@@ -41,23 +42,23 @@ class WeatherDataset(Dataset):
 class Normalize(torch.nn.Module):
     """Preprocessing normalization layer."""
 
-    def __init__(self, std: torch.Tensor, mean: torch.Tensor):
+    def __init__(self: Self, std: torch.Tensor, mean: torch.Tensor) -> None:
         super().__init__()
         self.std = std.to(DEVICE)
         self.mean = mean.to(DEVICE)
 
-    def forward(self, x):
+    def forward(self: Self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std
 
 
 class Model(torch.nn.Module):
     def __init__(
-        self,
+        self: Self,
         std: torch.Tensor,
         mean: torch.Tensor,
         kernel_size: int,
         hidden_units: int = 8,
-    ):
+    ) -> None:
         super(Model, self).__init__()
         self.layers = torch.nn.Sequential(
             Normalize(std, mean),
@@ -76,7 +77,7 @@ class Model(torch.nn.Module):
         )
         self.loss = torch.nn.SmoothL1Loss()
 
-    def forward(self, x: torch.Tensor):
+    def forward(self: Self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
 
@@ -169,7 +170,7 @@ def run(
     batch_size: int = 512,
     kernel_size: int = 5,
     train_test_ratio: float = 0.8,
-):
+) -> None:
     print(f"data_path: {data_path}")
     print(f"model_path: {model_path}")
     print(f"epochs: {epochs}")

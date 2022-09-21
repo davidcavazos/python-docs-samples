@@ -5,7 +5,9 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def render_rgb_images(values: np.ndarray, min=0.0, max=1.0) -> np.ndarray:
+def render_rgb_images(
+    values: np.ndarray, min: float = 0.0, max: float = 1.0
+) -> np.ndarray:
     scaled_values = (values - min) / (max - min)
     rgb_values = scaled_values * 255
     return rgb_values.astype(np.uint8)
@@ -49,7 +51,7 @@ def render_gpm(patch: np.ndarray) -> np.ndarray:
     return render_classifications(patch[-1], palette)
 
 
-def show_inputs(data: np.ndarray):
+def show_inputs(data: np.ndarray) -> None:
     patches = data.transpose((1, 0, 2, 3))
     fig = make_subplots(rows=2, cols=len(patches))
     for i, patch in enumerate(patches):
@@ -58,7 +60,7 @@ def show_inputs(data: np.ndarray):
     fig.show()
 
 
-def show_labels(data: np.ndarray):
+def show_labels(data: np.ndarray) -> None:
     patches = data.transpose((1, 0, 2, 3))
     fig = make_subplots(rows=1, cols=len(patches))
     for i, patch in enumerate(patches):

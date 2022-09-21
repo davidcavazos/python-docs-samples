@@ -13,18 +13,18 @@
 # limitations under the License.
 
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, NamedTuple, Tuple
 import io
 import logging
 import random
-import requests
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 import uuid
 
 import ee
-from google.api_core import retry, exceptions
+from google.api_core import exceptions, retry
 import google.auth
 import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
+import requests
 
 INPUTS = {
     "NOAA/GOES/16/MCMIPF": [f"CMI_C{i:02}" for i in range(1, 16 + 1)],
@@ -203,7 +203,7 @@ def run(
     patch_size: int,
     max_requests: int,
     beam_args: Optional[List[str]] = None,
-):
+) -> None:
     import apache_beam as beam
     from apache_beam.options.pipeline_options import PipelineOptions
 
