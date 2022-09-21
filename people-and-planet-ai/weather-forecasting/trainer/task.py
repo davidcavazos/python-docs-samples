@@ -72,6 +72,7 @@ class Model(torch.nn.Module):
                 out_channels=1,
                 kernel_size=(2, kernel_size, kernel_size),
             ),
+            torch.nn.ReLU(),
         )
         self.loss = torch.nn.SmoothL1Loss()
 
