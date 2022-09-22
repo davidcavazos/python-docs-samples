@@ -31,28 +31,30 @@ exit = Mock()
 
 
 def test_notebook(
-    project: str, bucket_name: str, location: str, unique_name: str
+    # project: str, bucket_name: str, location: str, unique_name: str
 ) -> None:
     # Create the datasets since this step is disabled from testing the notebook.
-    conftest.run_cmd(
-        "python",
-        "datasets.py",
-        f"--output-path=gs://{bucket_name}/weather/data",
-        "--num-dates=1",
-        "--num-points=1",
-        "--runner=DataflowRunner",
-        f"--project={project}",
-        f"--region={location}",
-        f"--temp_location=gs://{bucket_name}/temp",
-        # Parameters for testing only, not used in the notebook.
-        f"--job_name={unique_name}",  # Dataflow job name
-    )
+    # conftest.run_cmd(
+    #     "python",
+    #     "datasets.py",
+    #     f"--output-path=gs://{bucket_name}/weather/data",
+    #     "--num-dates=1",
+    #     "--num-points=1",
+    #     "--runner=DataflowRunner",
+    #     f"--project={project}",
+    #     f"--region={location}",
+    #     f"--temp_location=gs://{bucket_name}/temp",
+    #     # Parameters for testing only, not used in the notebook.
+    #     f"--job_name={unique_name}",  # Dataflow job name
+    # )
 
-    substitutions = {
-        "project": project,
-        "bucket": bucket_name,
-        "location": location,
-        "display_name": unique_name,  # Vertex AI job name
-        "epochs": 1,
-    }
+    # substitutions = {
+    #     "project": project,
+    #     "bucket": bucket_name,
+    #     "location": location,
+    #     "display_name": unique_name,  # Vertex AI job name
+    #     "epochs": 1,
+    # }
+    substitutions = {}
+    PRELUDE = "x = 1\nassert False, ':D 🎉'"
     conftest.run_notebook("README.ipynb", substitutions, PRELUDE)

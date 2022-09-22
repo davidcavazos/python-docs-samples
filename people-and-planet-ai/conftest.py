@@ -21,7 +21,7 @@ import subprocess
 import uuid
 from typing import Dict
 
-from nbclient import NotebookClient
+import nbclient
 import nbformat
 from google.cloud import storage
 import pytest
@@ -118,5 +118,13 @@ def run_notebook(
     nb.cells = [nbformat.v4.new_code_cell(prelude)] + nb.cells
 
     # Run the notebook.
-    client = NotebookClient(nb)
-    client.execute()
+    error = ""
+    client = nbclient.NotebookClient(nb)
+    try:
+        client.execute()
+    except nbclient.exceptions.CellExecutionError as e:
+        # Remove colors and other escape characters to make it easier to read in the logs.
+        error = re.sub(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]", "", str(e))
+
+    if error:
+        raise RuntimeError(error)
