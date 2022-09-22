@@ -27,6 +27,19 @@ import sys
 
 sys.modules['google.colab'] = Mock()
 exit = Mock()
+
+credentials, _ = google.auth.default(
+    scopes=[
+        "https://www.googleapis.com/auth/cloud-platform",
+        "https://www.googleapis.com/auth/earthengine",
+    ]
+)
+ee.Initialize(
+    credentials.with_quota_project(None),
+    project='python-docs-samples-tests',
+    opt_url="https://earthengine-highvolume.googleapis.com",
+)
+ee.Initialize = Mock()
 """
 
 
