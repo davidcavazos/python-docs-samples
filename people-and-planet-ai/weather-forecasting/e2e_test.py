@@ -28,6 +28,9 @@ import sys
 sys.modules['google.colab'] = Mock()
 exit = Mock()
 
+import google.auth
+import ee
+
 credentials, _ = google.auth.default(
     scopes=[
         "https://www.googleapis.com/auth/cloud-platform",
