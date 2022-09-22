@@ -124,6 +124,7 @@ def run_notebook(
         client.execute()
     except nbclient.exceptions.CellExecutionError as e:
         # Remove colors and other escape characters to make it easier to read in the logs.
+        #   https://stackoverflow.com/a/33925425
         error = re.sub(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]", "", str(e))
 
     if error:
