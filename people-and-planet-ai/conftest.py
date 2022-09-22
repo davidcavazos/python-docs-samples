@@ -97,7 +97,7 @@ def run_notebook(
     #   https://regex101.com/r/kvigr6/1
     compiled_substitutions = [
         (
-            re.compile(rf"""{name}\s*=\s*(?:\w+|'[^']*'|"[^"]*")"""),
+            re.compile(rf"""\b{name}\s*=\s*(?:\w+|'[^']*'|"[^"]*")"""),
             f"{name} = {repr(value)}",
         )
         for name, value in substitutions.items()
