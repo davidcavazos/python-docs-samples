@@ -94,9 +94,12 @@ def run_notebook(
     shell_command_re = re.compile(r"^!(?:[^\n]+\\\n)*(?:[^\n]+)$", re.MULTILINE)
 
     # Compile regular expressions for variable substitutions.
-    #   https://regex101.com/r/AS7pDq/1
+    #   https://regex101.com/r/kvigr6/1
     compiled_substitutions = [
-        (re.compile(rf"{name}\s*=\s*.+(?<!,)"), f"{name} = {repr(value)}")
+        (
+            re.compile(rf"""{name}\s*=\s*(?:\w+|'[^']*'|"[^"]*")"""),
+            f"{name} = {repr(value)}",
+        )
         for name, value in substitutions.items()
     ]
 
