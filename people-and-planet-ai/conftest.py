@@ -54,8 +54,6 @@ def unique_name(test_name: str, unique_id: str) -> str:
 
 @pytest.fixture(scope="session")
 def bucket_name(test_name: str, location: str, unique_id: str) -> str:
-    yield "dcavazos-lyra"
-    return
     storage_client = storage.Client()
 
     bucket_name = f"{test_name.replace('/', '-')}-{unique_id}"
