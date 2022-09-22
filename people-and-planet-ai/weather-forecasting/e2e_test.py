@@ -36,11 +36,9 @@ LOCATION = "us-central1"
 PRELUDE = """
 from unittest.mock import Mock
 import sys
-from google.cloud import aiplatform
 
 sys.modules['google.colab'] = Mock()
 exit = Mock()
-aiplatform.CustomTrainingJob.run = Mock()
 """
 
 
@@ -60,27 +58,21 @@ def bucket_name() -> str:
 
 def test_notebook(bucket_name: str) -> None:
     # Create the datasets since this step is disabled from testing the notebook.
-    try:
-        subprocess.run(
-            [
-                "python",
-                "datasets.py",
-                f"--output-path=gs://{bucket_name}/weather/data",
-                "--num-dates=1",
-                "--num-points=1",
-                "--runner=DataflowRunner",
-                f"--project={PROJECT}",
-                f"--region={LOCATION}",
-                f"--temp_location=gs://{bucket_name}/temp",
-                # Parameters for testing only, not used in the notebook.
-                f"--job_name={NAME.replace('/', '-')}-{UUID}",
-            ],
-            check=True,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as e:
-        # Include the error message from the failed command.
-        raise Exception(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
+    run_cmd(
+        [
+            "python",
+            "datasets.py",
+            f"--output-path=gs://{bucket_name}/weather/data",
+            "--num-dates=1",
+            "--num-points=1",
+            "--runner=DataflowRunner",
+            f"--project={PROJECT}",
+            f"--region={LOCATION}",
+            f"--temp_location=gs://{bucket_name}/temp",
+            # Parameters for testing only, not used in the notebook.
+            f"--job_name={NAME.replace('/', '-')}-{UUID}",
+        ]
+    )
 
     substitutions = {
         "project": PROJECT,
@@ -92,7 +84,26 @@ def test_notebook(bucket_name: str) -> None:
     run_notebook("README.ipynb", substitutions, PRELUDE)
 
 
-# TODO: move this to a conftest.py
+# TODO: move these to a conftest.py
+
+
+def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
+    try:
+        print(f">> {cmd}")
+        p = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        print(p.stdout.decode("utf-8"))
+        return p
+    except subprocess.CalledProcessError as e:
+        # Include the error message from the failed command.
+        print(e.stdout.decode("utf-8"))
+        raise Exception(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
+
+
 def run_notebook(
     ipynb_file: str,
     substitutions: Dict[str, str] = {},
