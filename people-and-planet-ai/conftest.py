@@ -85,7 +85,7 @@ def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
 
 def run_notebook(
     ipynb_file: str,
-    substitutions: Dict[str, str] = {},
+    substitutions: dict = {},
     prelude: str = "",
     remove_shell_commands: bool = True,
 ) -> None:
@@ -96,7 +96,7 @@ def run_notebook(
     # Compile regular expressions for variable substitutions.
     #   https://regex101.com/r/AS7pDq/1
     compiled_substitutions = [
-        (re.compile(rf"{name}\s*=\s*.+(?<!,)"), f"{name} = {value}")
+        (re.compile(rf"{name}\s*=\s*.+(?<!,)"), f"{name} = {repr(value)}")
         for name, value in substitutions.items()
     ]
 
