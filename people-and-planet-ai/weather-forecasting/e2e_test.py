@@ -35,19 +35,17 @@ def test_notebook(
 ) -> None:
     # Create the datasets since this step is disabled from testing the notebook.
     conftest.run_cmd(
-        [
-            "python",
-            "datasets.py",
-            f"--output-path=gs://{bucket_name}/weather/data",
-            "--num-dates=1",
-            "--num-points=1",
-            "--runner=DataflowRunner",
-            f"--project={project}",
-            f"--region={location}",
-            f"--temp_location=gs://{bucket_name}/temp",
-            # Parameters for testing only, not used in the notebook.
-            f"--job_name={unique_name}",  # Dataflow job name
-        ]
+        "python",
+        "datasets.py",
+        f"--output-path=gs://{bucket_name}/weather/data",
+        "--num-dates=1",
+        "--num-points=1",
+        "--runner=DataflowRunner",
+        f"--project={project}",
+        f"--region={location}",
+        f"--temp_location=gs://{bucket_name}/temp",
+        # Parameters for testing only, not used in the notebook.
+        f"--job_name={unique_name}",  # Dataflow job name
     )
 
     substitutions = {
