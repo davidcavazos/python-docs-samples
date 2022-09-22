@@ -68,18 +68,18 @@ def bucket_name(test_name: str, location: str, unique_id: str) -> str:
 
 def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
     try:
-        print(f">> {cmd}")
+        logging.info(f">> {cmd}")
         p = subprocess.run(
             cmd,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        print(p.stdout.decode("utf-8"))
+        logging.info(p.stdout.decode("utf-8"))
         return p
     except subprocess.CalledProcessError as e:
         # Include the error message from the failed command.
-        print(e.stdout.decode("utf-8"))
+        logging.info(e.stdout.decode("utf-8"))
         raise Exception(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
 
 
