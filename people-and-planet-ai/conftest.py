@@ -19,7 +19,7 @@ import re
 import subprocess
 import subprocess
 import uuid
-from typing import Dict
+from typing import Callable
 
 import nbclient
 import nbformat
@@ -66,6 +66,118 @@ def bucket_name(test_name: str, location: str, unique_id: str) -> str:
     bucket.delete(force=True)
 
 
+@pytest.fixture(scope="session")
+def container_image_build(
+    project: str, test_name: str, unique_id: str
+) -> Callable[[str], str]:
+    # https://docs.pytest.org/en/latest/fixture.html#factories-as-fixtures
+    built_images = []
+
+    def build(source_dir: str = ".") -> str:
+        image_name = (
+            f"gcr.io/{project}/{test_name}/{source_dir}:{unique_id}"
+            if source_dir != "."
+            else f"gcr.io/{project}/{test_name}:{unique_id}"
+        )
+
+        # https://cloud.google.com/sdk/gcloud/reference/builds/submit
+        run_cmd(
+            "gcloud",
+            "builds",
+            "submit",
+            source_dir,
+            f"--project={project}",
+            f"--pack=image={image_name}",
+            "--quiet",
+        )
+        built_images.append(image_name)
+        logging.info(f"Container image built: {image_name}")
+        return image_name
+
+    yield build
+
+    for image_name in built_images:
+        # https://cloud.google.com/sdk/gcloud/reference/container/images/delete
+        run_cmd(
+            "gcloud",
+            "container",
+            "images",
+            "delete",
+            image_name,
+            f"--project={project}",
+            "--force-delete-tags",
+            "--quiet",
+        )
+        logging.info(f"Container image deleted: {image_name}")
+
+
+@pytest.fixture(scope="session")
+def cloud_run_deploy(
+    project: str,
+    location: str,
+    test_name: str,
+    unique_id: str,
+    container_image_build: Callable[[str], str],
+) -> Callable[..., str]:
+    # https://docs.pytest.org/en/latest/fixture.html#factories-as-fixtures
+    deployed_services = []
+
+    def deploy(source_dir: str, *flags: str) -> str:
+        container_image = container_image_build(source_dir)
+        service_name = (
+            f"{test_name}-{source_dir}-{unique_id}"
+            if source_dir != "."
+            else f"{test_name}-{unique_id}"
+        ).replace("/", "-")
+
+        # https://cloud.google.com/sdk/gcloud/reference/run/deploy
+        run_cmd(
+            "gcloud",
+            "run",
+            "deploy",
+            service_name,
+            f"--project={project}",
+            f"--region={location}",
+            f"--image={container_image}",
+            *flags,
+        )
+        deployed_services.append(service_name)
+        logging.info(f"Cloud Run service deployed: {service_name}")
+
+        # https://cloud.google.com/sdk/gcloud/reference/run/services/describe
+        service_url = (
+            run_cmd(
+                "gcloud",
+                "run",
+                "services",
+                "describe",
+                cloud_run_deploy,
+                f"--project={project}",
+                f"--region={location}",
+                "--format=get(status.url)",
+            )
+            .stdout.decode("utf-8")
+            .strip()
+        )
+        logging.info(f"Cloud Run {service_name} URL: {service_url}")
+        return service_url
+
+    yield deploy
+
+    for service_name in deployed_services:
+        # https://cloud.google.com/sdk/gcloud/reference/run/services/delete
+        run_cmd(
+            "gcloud",
+            "run",
+            "services",
+            "delete",
+            service_name,
+            f"--project={project}",
+            f"--region={location}",
+            "--quiet",
+        )
+
+
 def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
     try:
         logging.info(f">> {cmd}")
@@ -94,10 +206,10 @@ def run_notebook(
     shell_command_re = re.compile(r"^!(?:[^\n]+\\\n)*(?:[^\n]+)$", re.MULTILINE)
 
     # Compile regular expressions for variable substitutions.
-    #   https://regex101.com/r/kvigr6/1
+    #   https://regex101.com/r/e32vfW/1
     compiled_substitutions = [
         (
-            re.compile(rf"""\b{name}\s*=\s*(?:\w+|'[^']*'|"[^"]*")"""),
+            re.compile(rf"""\b{name}\s*=\s*(?:f?'[^']*'|f?"[^"]*"|\w+)"""),
             f"{name} = {repr(value)}",
         )
         for name, value in substitutions.items()

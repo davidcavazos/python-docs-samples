@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Callable
+
 import conftest
 import pytest
-
-
-@pytest.fixture(scope="session")
-def test_name(python_version: str) -> str:
-    return f"ppai/weather-forecasting-py{python_version}"
-
 
 PRELUDE = """
 from unittest.mock import Mock
@@ -27,29 +23,21 @@ import sys
 
 sys.modules['google.colab'] = Mock()
 exit = Mock()
-
-import google.auth
-import ee
-
-credentials, _ = google.auth.default(
-    scopes=[
-        "https://www.googleapis.com/auth/cloud-platform",
-        "https://www.googleapis.com/auth/earthengine",
-    ]
-)
-ee.Initialize(
-    credentials.with_quota_project(None),
-    project='python-docs-samples-tests',
-    opt_url="https://earthengine-highvolume.googleapis.com",
-)
-ee.Initialize = Mock()
 """
 
 
-def test_notebook(
+@pytest.fixture(scope="session")
+def test_name(python_version: str) -> str:
+    return f"ppai/weather-forecasting-py{python_version}"
+
+
+@pytest.fixture(scope="session")
+def create_datasets(
     project: str, bucket_name: str, location: str, unique_name: str
 ) -> None:
-    # Create the datasets since this step is disabled from testing the notebook.
+    # Since creating the datasets is a shell command, it is disabled
+    # in the notebook, so we run it here.
+    # ⚠️ If this command changes, please update the notebook!
     conftest.run_cmd(
         "python",
         "datasets.py",
@@ -63,12 +51,40 @@ def test_notebook(
         # Parameters for testing only, not used in the notebook.
         f"--job_name={unique_name}",  # Dataflow job name
     )
+    # No need to clean up, files are deleted when the bucket is deleted.
 
+
+@pytest.fixture(scope="session")
+def model_url(
+    bucket_name: str,
+    cloud_run_deploy: Callable[..., str],
+) -> str:
+    # Since deploying the model is a shell command, it is disabled
+    # in the notebook, so we run it here.
+    # ⚠️ If the command flags change, please update the notebook!
+    #   https://cloud.google.com/sdk/gcloud/reference/run/deploy
+    return cloud_run_deploy(
+        "serving",  # source_dir
+        f"--update-env-vars=MODEL_PATH=gs://{bucket_name}/weather/model.pt",
+        # "--memory=1G",
+        "--no-allow-unauthenticated",
+    )
+
+
+def test_notebook(
+    project: str,
+    bucket_name: str,
+    location: str,
+    unique_name: str,
+    create_datasets: None,
+    model_url: str,
+) -> None:
     substitutions = {
         "project": project,
         "bucket": bucket_name,
         "location": location,
         "display_name": unique_name,  # Vertex AI job name
         "epochs": 1,
+        "model_url": model_url,
     }
     conftest.run_notebook("README.ipynb", substitutions, PRELUDE)

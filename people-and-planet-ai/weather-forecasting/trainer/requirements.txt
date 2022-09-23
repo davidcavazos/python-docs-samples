@@ -1,2 +1,0 @@
-google-cloud-aiplatform==1.16.1
-torch==1.12.1
