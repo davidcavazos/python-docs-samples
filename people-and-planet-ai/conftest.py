@@ -12,29 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+from __future__ import annotations
+
+from datetime import datetime
+import multiprocessing
 import os
 import platform
 import re
 import subprocess
-import subprocess
+from unittest import mock
 import uuid
-from typing import Callable
+from collections.abc import Callable, Iterable
 
-import nbclient
-import nbformat
 from google.cloud import storage
 import pytest
 
 
 @pytest.fixture(scope="session")
 def project() -> str:
-    return os.environ["GOOGLE_CLOUD_PROJECT"]
+    # This is set by the testing infrastructure.
+    project = os.environ["GOOGLE_CLOUD_PROJECT"]
+    run_cmd("gcloud", "config", "set", "project", project)
+
+    # Since everything requires the project, let's confiugre and show some
+    # debugging information here.
+    run_cmd("gcloud", "version")
+    run_cmd("gcloud", "config", "list")
+    return project
 
 
 @pytest.fixture(scope="session")
 def location() -> str:
-    return "us-central1"
+    # Override for local testing.
+    return os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 
 
 @pytest.fixture(scope="session")
@@ -44,7 +54,9 @@ def python_version() -> str:
 
 @pytest.fixture(scope="session")
 def unique_id() -> str:
-    return uuid.uuid4().hex[0:6]
+    id = uuid.uuid4().hex[0:6]
+    print(f"Test unique identifier: {id}")
+    return id
 
 
 @pytest.fixture(scope="session")
@@ -54,156 +66,166 @@ def unique_name(test_name: str, unique_id: str) -> str:
 
 @pytest.fixture(scope="session")
 def bucket_name(test_name: str, location: str, unique_id: str) -> str:
-    storage_client = storage.Client()
+    # Override for local testing.
+    if "GOOGLE_CLOUD_BUCKET" in os.environ:
+        bucket_name = os.environ["GOOGLE_CLOUD_BUCKET"]
+        print(f"bucket_name: {bucket_name} (from GOOGLE_CLOUD_BUCKET)")
+        yield bucket_name
+        return
 
+    storage_client = storage.Client()
     bucket_name = f"{test_name.replace('/', '-')}-{unique_id}"
     bucket = storage_client.create_bucket(bucket_name, location=location)
 
-    logging.info(f"bucket_name: {bucket_name}")
+    print(f"bucket_name: {bucket_name}")
     yield bucket_name
 
-    subprocess.check_call(["gsutil", "-m", "rm", "-rf", f"gs://{bucket_name}/*"])
+    # Try to remove all files before deleting the bucket.
+    # Deleting a bucket with too many files results in an error.
+    try:
+        run_cmd("gsutil", "-m", "rm", "-rf", f"gs://{bucket_name}/*")
+    except RuntimeError:
+        # If no files were found and it fails, ignore the error.
+        pass
+
+    # Delete the bucket.
     bucket.delete(force=True)
 
 
 @pytest.fixture(scope="session")
-def container_image_build(
-    project: str, test_name: str, unique_id: str
-) -> Callable[[str], str]:
-    # https://docs.pytest.org/en/latest/fixture.html#factories-as-fixtures
-    built_images = []
-
-    def build(source_dir: str = ".") -> str:
-        image_name = (
-            f"gcr.io/{project}/{test_name}/{source_dir}:{unique_id}"
-            if source_dir != "."
-            else f"gcr.io/{project}/{test_name}:{unique_id}"
-        )
-
-        # https://cloud.google.com/sdk/gcloud/reference/builds/submit
-        run_cmd(
-            "gcloud",
-            "builds",
-            "submit",
-            source_dir,
-            f"--project={project}",
-            f"--pack=image={image_name}",
-            "--quiet",
-        )
-        built_images.append(image_name)
-        logging.info(f"Container image built: {image_name}")
-        return image_name
-
-    yield build
-
-    for image_name in built_images:
-        # https://cloud.google.com/sdk/gcloud/reference/container/images/delete
-        run_cmd(
-            "gcloud",
-            "container",
-            "images",
-            "delete",
-            image_name,
-            f"--project={project}",
-            "--force-delete-tags",
-            "--quiet",
-        )
-        logging.info(f"Container image deleted: {image_name}")
+# Disable printing to not log the identity token.
+@mock.patch("builtins.print", lambda x: x)
+def identity_token() -> str:
+    return (
+        run_cmd("gcloud", "auth", "print-identity-token").stdout.decode("utf-8").strip()
+    )
 
 
-@pytest.fixture(scope="session")
-def cloud_run_deploy(
-    project: str,
-    location: str,
-    test_name: str,
-    unique_id: str,
-    container_image_build: Callable[[str], str],
-) -> Callable[..., str]:
-    # https://docs.pytest.org/en/latest/fixture.html#factories-as-fixtures
-    deployed_services = []
-
-    def deploy(source_dir: str, *flags: str) -> str:
-        container_image = container_image_build(source_dir)
-        service_name = (
-            f"{test_name}-{source_dir}-{unique_id}"
-            if source_dir != "."
-            else f"{test_name}-{unique_id}"
-        ).replace("/", "-")
-
-        # https://cloud.google.com/sdk/gcloud/reference/run/deploy
-        run_cmd(
-            "gcloud",
-            "run",
-            "deploy",
-            service_name,
-            f"--project={project}",
-            f"--region={location}",
-            f"--image={container_image}",
-            *flags,
-        )
-        deployed_services.append(service_name)
-        logging.info(f"Cloud Run service deployed: {service_name}")
-
-        # https://cloud.google.com/sdk/gcloud/reference/run/services/describe
-        service_url = (
-            run_cmd(
-                "gcloud",
-                "run",
-                "services",
-                "describe",
-                cloud_run_deploy,
-                f"--project={project}",
-                f"--region={location}",
-                "--format=get(status.url)",
-            )
-            .stdout.decode("utf-8")
-            .strip()
-        )
-        logging.info(f"Cloud Run {service_name} URL: {service_url}")
-        return service_url
-
-    yield deploy
-
-    for service_name in deployed_services:
-        # https://cloud.google.com/sdk/gcloud/reference/run/services/delete
-        run_cmd(
-            "gcloud",
-            "run",
-            "services",
-            "delete",
-            service_name,
-            f"--project={project}",
-            f"--region={location}",
-            "--quiet",
-        )
+def env_var(prefix: str, id: str = "") -> str:
+    return f"{prefix}_{id}".replace(".", "").replace("/", "").strip("_")
 
 
 def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
     try:
-        logging.info(f">> {cmd}")
+        print(f">> {cmd}")
+        start = datetime.now()
         p = subprocess.run(
             cmd,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        logging.info(p.stdout.decode("utf-8"))
+        print(p.stderr.decode("utf-8"))
+        print(p.stdout.decode("utf-8"))
+        elapsed = (datetime.now() - start).seconds
+        minutes = int(elapsed / 60)
+        seconds = elapsed - minutes * 60
+        print(f"Command `{cmd[0]}` finished in {minutes}m {seconds}s")
         return p
     except subprocess.CalledProcessError as e:
         # Include the error message from the failed command.
-        logging.info(e.stdout.decode("utf-8"))
-        raise Exception(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
+        print(e.stderr.decode("utf-8"))
+        print(e.stdout.decode("utf-8"))
+        raise RuntimeError(f"{e}\n\n{e.stderr.decode('utf-8')}") from e
+
+
+def cloud_run_cleanup(service_name: str, location: str) -> None:
+    # Delete the Container Registry image associated with the service.
+    image = (
+        run_cmd(
+            "gcloud",
+            "run",
+            "services",
+            "describe",
+            service_name,
+            f"--region={location}",
+            "--format=get(image)",
+        )
+        .stdout.decode("utf-8")
+        .strip()
+    )
+    run_cmd(
+        "gcloud",
+        "container",
+        "images",
+        "delete",
+        image,
+        "--force-delete-tags",
+        "--quiet",
+    )
+
+    # Delete the Cloud Run service.
+    run_cmd(
+        "gcloud",
+        "run",
+        "services",
+        "delete",
+        service_name,
+        f"--region={location}",
+        "--quiet",
+    )
+
+
+def aiplatform_cleanup(model_name: str, location: str, versions: list[str]) -> None:
+    # Delete versions.
+    for version in versions:
+        run_cmd(
+            "gcloud",
+            "ai-platform",
+            "versions",
+            "delete",
+            version,
+            f"--model={model_name}",
+            f"--region={location}",
+            "--quiet",
+        )
+
+    # Delete model.
+    run_cmd(
+        "gcloud",
+        "ai-platform",
+        "models",
+        "delete",
+        model_name,
+        f"--region={location}",
+        "--quiet",
+    )
+
 
 
 def run_notebook(
     ipynb_file: str,
-    substitutions: dict = {},
     prelude: str = "",
-    remove_shell_commands: bool = True,
+    section: str = "",
+    variables: dict = {},
+    replace: dict[str, str] = {},
+    preprocess: Callable[[str], str] = lambda source: source,
+    skip_shell_commands: bool = False,
+    until_end: bool = False,
 ) -> None:
+    import nbclient
+    import nbformat
+
+    def notebook_filter_section(
+        start: str,
+        end: str,
+        cells: list[nbformat.NotebookNode],
+        until_end: bool = False,
+    ) -> Iterable[nbformat.NotebookNode]:
+        in_section = False
+        for cell in cells:
+            if cell["cell_type"] == "markdown":
+                if not in_section and cell["source"].startswith(start):
+                    in_section = True
+                elif in_section and not until_end and cell["source"].startswith(end):
+                    return
+
+            if in_section:
+                yield cell
+
     # Regular expression to match and remove shell commands from the notebook.
-    #   https://regex101.com/r/auHETK/1
-    shell_command_re = re.compile(r"^!(?:[^\n]+\\\n)*(?:[^\n]+)$", re.MULTILINE)
+    #   https://regex101.com/r/EHWBpT/1
+    shell_command_re = re.compile(r"^!((?:[^\n]+\\\n)*(?:[^\n]+))$", re.MULTILINE)
 
     # Compile regular expressions for variable substitutions.
     #   https://regex101.com/r/e32vfW/1
@@ -212,22 +234,49 @@ def run_notebook(
             re.compile(rf"""\b{name}\s*=\s*(?:f?'[^']*'|f?"[^"]*"|\w+)"""),
             f"{name} = {repr(value)}",
         )
-        for name, value in substitutions.items()
+        for name, value in variables.items()
     ]
 
+    # Filter the section if any, otherwise use the entire notebook.
     nb = nbformat.read(ipynb_file, as_version=4)
+    if section:
+        start = section
+        end = section.split(" ", 1)[0] + " "
+        nb.cells = list(notebook_filter_section(start, end, nb.cells, until_end))
+        if len(nb.cells) == 0:
+            raise ValueError(
+                f"Section {repr(section)} not found in notebook {repr(ipynb_file)}"
+            )
+
+    # Preprocess the cells.
     for cell in nb.cells:
         # Only preprocess code cells.
         if cell["cell_type"] != "code":
             continue
 
-        # Remove shell commands.
-        if remove_shell_commands:
-            cell["source"] = shell_command_re.sub("", cell["source"])
+        # Run any custom preprocessing functions before.
+        cell["source"] = preprocess(cell["source"])
+
+        # Preprocess shell commands.
+        if skip_shell_commands:
+            cmd = "pass"
+            cell["source"] = shell_command_re.sub(cmd, cell["source"])
+        else:
+            cmd = [
+                "import subprocess",
+                "_cmd = f'''\\1'''",
+                "print(f'>> {_cmd}')",
+                "subprocess.run(_cmd, shell=True, check=True)",
+            ]
+            cell["source"] = shell_command_re.sub("\n".join(cmd), cell["source"])
 
         # Apply variable substitutions.
         for regex, new_value in compiled_substitutions:
             cell["source"] = regex.sub(new_value, cell["source"])
+
+        # Apply replacements.
+        for old, new in replace.items():
+            cell["source"] = cell["source"].replace(old, new)
 
     # Prepend the prelude cell.
     nb.cells = [nbformat.v4.new_code_cell(prelude)] + nb.cells
@@ -243,4 +292,34 @@ def run_notebook(
         error = re.sub(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]", "", str(e))
 
     if error:
-        raise RuntimeError(error)
+        raise RuntimeError(
+            f"Error on {repr(ipynb_file)}, section {repr(section)}: {error}"
+        )
+
+
+def run_notebook_parallel(
+    ipynb_file: str,
+    prelude: str,
+    sections: list[str],
+    variables: dict[str, dict] = {},
+    replace: dict[str, dict[str, str]] = {},
+    skip_shell_commands: list[str] = [],
+) -> None:
+    args = [
+        {
+            "ipynb_file": ipynb_file,
+            "section": section,
+            "prelude": prelude,
+            "variables": variables.get(section, {}),
+            "replace": replace.get(section, {}),
+            "skip_shell_commands": section in skip_shell_commands,
+        }
+        for section in sections
+    ]
+    with multiprocessing.Pool(len(args)) as pool:
+        pool.map(_run_notebook_section, args)
+
+
+def _run_notebook_section(kwargs: dict):
+    # Helper function to make it pickleable and run with multiprpcessing.
+    run_notebook(**kwargs)
