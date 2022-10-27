@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List
-
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -22,12 +20,25 @@ from plotly.subplots import make_subplots
 def render_rgb_images(
     values: np.ndarray, min: float = 0.0, max: float = 1.0
 ) -> np.ndarray:
+    """Renders a numeric NumPy array with shape (width, height, rgb) as an image.
+    Args:
+        values: A float array with shape (width, height, rgb).
+        min: Minimum value in the values.
+        max: Maximum value in the values.
+    Returns: An uint8 array with shape (width, height, rgb).
+    """
     scaled_values = (values - min) / (max - min)
-    rgb_values = scaled_values * 255
+    rgb_values = np.clip(scaled_values, 0, 1) * 255
     return rgb_values.astype(np.uint8)
 
 
-def render_classifications(values: np.ndarray, palette: List[str]) -> np.ndarray:
+def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray:
+    """Renders a classifications NumPy array with shape (width, height, 1) as an image.
+    Args:
+        values: An uint8 array with shape (width, height, 1).
+        palette: List of hex encoded colors.
+    Returns: An uint8 array with shape (width, height, rgb) with colors from the palette.
+    """
     # Create a color map from a hex color palette.
     xs = np.linspace(0, len(palette), 256)
     indices = np.arange(len(palette))
@@ -39,6 +50,11 @@ def render_classifications(values: np.ndarray, palette: List[str]) -> np.ndarray
     color_map = np.array([red, green, blue]).astype(np.uint8).transpose()
     color_indices = (values / len(palette) * 255).astype(np.uint8)
     return np.take(color_map, color_indices, axis=0)
+
+
+# GOES 16: https://developers.google.com/earth-engine/datasets/catalog/NOAA_GOES_16_MCMIPF
+# Elevation: https://developers.google.com/earth-engine/datasets/catalog/MERIT_DEM_v1_0_3
+# GPM: https://developers.google.com/earth-engine/datasets/catalog/NASA_GPM_L3_IMERG_V06
 
 
 def render_goes16(patch: np.ndarray) -> np.ndarray:
