@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Creates a dataset to train a machine learning model."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -31,6 +33,7 @@ import requests
 from serving import data
 
 # Default values.
+NUM_DATES = 100
 POINTS_PER_CLASS = 100
 PATCH_SIZE = 128
 MAX_REQUESTS = 20  # default EE request quota
@@ -98,21 +101,45 @@ def try_get_example(
 
 def write_npz_file(
     inputs: np.ndarray, labels: np.ndarray, file_prefix: str = "data/"
-) -> None:
+) -> str:
+    """Writes an (inputs, labels) pair into a compressed NumPy file.
+
+    Args:
+        inputs: Input data as a NumPy array.
+        labels: Label data as a NumPy array.
+        file_prefix: Directory path to save files to.
+
+    Returns: The filename of the data file.
+    """
     filename = FileSystems.join(file_prefix, f"{uuid.uuid4()}.npz")
     with FileSystems.create(filename) as f:
         np.savez_compressed(f, inputs=inputs, labels=labels)
     logging.info(filename)
+    return filename
 
 
 def run(
     data_path: str,
-    num_dates: int,
-    points_per_class: int,
-    patch_size: int,
-    max_requests: int,
+    num_dates: int = NUM_DATES,
+    points_per_class: int = POINTS_PER_CLASS,
+    patch_size: int = PATCH_SIZE,
+    max_requests: int = MAX_REQUESTS,
     beam_args: Optional[List[str]] = None,
 ) -> None:
+    """Runs an Apache Beam pipeline to create a dataset.
+
+    This fetches data from Earth Engine and writes compressed NumPy files.
+    We use `max_requests` to limit the number of concurrent requests to Earth Engine
+    to avoid quota issues. You can request for an increas of quota if you need it.
+
+    Args:
+        data_path: Directory path to save the TFRecord files.
+        num_dates: Number of dates to get training points from.
+        points_per_class: Number of points per classification to pick.
+        patch_size: Size in pixels of the surrounding square patch.
+        max_requests: Limit the number of concurrent requests to Earth Engine.
+        beam_args: Apache Beam command line arguments to parse as pipeline options.
+    """
     random_dates = [
         START_DATE + (END_DATE - START_DATE) * random.random() for _ in range(num_dates)
     ]
@@ -122,7 +149,7 @@ def run(
         save_main_session=True,
         setup_file="./setup.py",
         max_num_workers=max_requests,  # distributed runners
-        direct_num_workers=max(max_requests, 20),  # direct runner
+        direct_num_workers=max(max_requests, MAX_REQUESTS),  # direct runner
     )
     with beam.Pipeline(options=beam_options) as pipeline:
         (
