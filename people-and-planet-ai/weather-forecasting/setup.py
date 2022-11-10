@@ -14,13 +14,13 @@
 
 from setuptools import setup
 
-# Requirements for the Dataflow dataset creation pipeline.
+# Requirements for Dataflow.
 setup(
     name="ppai-weather",
     url="https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/people-and-planet-ai/weather-forecasting",
     packages=["serving"],
     install_requires=[
-        "apache-beam[gcp]==2.41.0",
-        "earthengine-api==0.1.325",
+        "apache-beam[gcp]==2.42.0",
+        "earthengine-api==0.1.331",
     ],
 )
