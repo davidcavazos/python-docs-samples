@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2021 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@
 
 TEST_CONFIG_OVERRIDE = {
     # You can opt out from the test for specific Python versions.
-    # ℹ️ Apache Beam requires Python<3.10, so we'll use Python 3.9.
-    "ignored_versions": ["2.7", "3.6", "3.7", "3.8", "3.10"],
+    # 💡 Only test with Python 3.10
+    "ignored_versions": ["2.7", "3.6", "3.7", "3.8", "3.9"],
     # Old samples are opted out of enforcing Python type hints
     # All new samples should feature them
     "enforce_type_hints": True,
@@ -36,7 +36,7 @@ TEST_CONFIG_OVERRIDE = {
     # If you need to use a specific version of pip,
     # change pip_version_override to the string representation
     # of the version number, for example, "20.2.4"
-    "pip_version_override": "22.2.2",
+    "pip_version_override": None,
     # A dictionary you want to inject into your test. Don't put any
     # secrets here. These values will override predefined values.
     "envs": {},
