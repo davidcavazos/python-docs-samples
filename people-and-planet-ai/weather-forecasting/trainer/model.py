@@ -64,21 +64,21 @@ class Normalization(torch.nn.Module):
     @staticmethod
     def adapt(dataset: Dataset, batch_size: int = 32, axis: int = -1) -> Normalization:
         (first, _) = dataset[0]
-        dim = axis + 1 if axis >= 0 else first.dim() + axis + 1
-        include = [i for i in range(first.dim() + 1) if i != dim]
+        idx = axis if axis >= 0 else first.dim() + axis
+        dims = [i for i in range(first.dim() + 1) if i != idx + 1]
+        shape = [x if i == idx else 1 for i, x in enumerate(first.shape)]
 
         size = 0
-        (sum, sum_sq) = (torch.zeros([]), torch.zeros([]))
+        (sum, sum_sq) = (torch.zeros(shape), torch.zeros(shape))
         for inputs, _ in data_loader(dataset, batch_size):
             inputs = inputs.to(DEVICE, non_blocking=True)
-            sum += inputs.sum(include)
-            sum_sq += (inputs**2).sum(include)
+            sum += inputs.sum(dims).reshape(shape)
+            sum_sq += (inputs**2).sum(dims).reshape(shape)
             size += len(inputs)
         mean = sum / size
         variance = sum_sq / size - mean**2
         std = torch.sqrt(torch.abs(variance))
-        shape = [1 if i != dim else mean.shape[0] for i in range(1, first.dim() + 1)]
-        return Normalization(std.reshape(shape), mean.reshape(shape))
+        return Normalization(std, mean)
 
 
 class Model(torch.nn.Module):
