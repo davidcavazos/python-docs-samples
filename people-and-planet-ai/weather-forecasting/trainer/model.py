@@ -21,11 +21,11 @@ import os
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 # Default values.
 EPOCHS = 2
-BATCH_SIZE = 512
+BATCH_SIZE = 256
 TRAIN_TEST_RATIO = 0.9
 
 # Constants.
@@ -68,7 +68,7 @@ class Normalization(torch.nn.Module):
         include = [i for i in range(first.dim() + 1) if i != dim]
 
         size = 0
-        (sum, sum_sq) = (0.0, 0.0)
+        (sum, sum_sq) = (torch.zeros([]), torch.zeros([]))
         for inputs, _ in data_loader(dataset, batch_size):
             inputs = inputs.to(DEVICE, non_blocking=True)
             sum += inputs.sum(include)
@@ -103,7 +103,7 @@ class Model(torch.nn.Module):
         return self.layers(x)
 
 
-def train_test_split(dataset: Dataset, ratio: float) -> tuple[DataLoader, DataLoader]:
+def train_test_split(dataset: WeatherDataset, ratio: float) -> list[Subset]:
     train_size = int(len(dataset) * ratio)
     test_size = len(dataset) - train_size
     return random_split(dataset, [train_size, test_size])
@@ -113,14 +113,14 @@ def data_loader(dataset: Dataset, batch_size: int, shuffle: bool = False) -> Dat
     return DataLoader(
         dataset,
         batch_size,
-        num_workers=os.cpu_count(),
+        num_workers=os.cpu_count() or 0,
         shuffle=shuffle,
         pin_memory=True,
         persistent_workers=True,
     )
 
 
-def train(model: Model, loader: Dataset, loss: torch.nn.Module) -> float:
+def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
     loss = torch.nn.SmoothL1Loss()
     optimizer = torch.optim.Adam(model.parameters())
 

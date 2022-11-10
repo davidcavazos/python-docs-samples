@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 import logging
 import random
 from typing import List, Optional
 import uuid
-from collections.abc import Iterable
 
 import apache_beam as beam
 from apache_beam.io.filesystems import FileSystems

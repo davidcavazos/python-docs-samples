@@ -19,8 +19,8 @@ trained on exactly the same data that will be used for predictions.
 
 from __future__ import annotations
 
-import io
 from datetime import datetime, timedelta
+import io
 
 import ee
 from google.api_core import exceptions, retry
@@ -32,7 +32,7 @@ import requests
 SCALE = 10000  # meters per pixel
 
 INPUT_HOUR_DELTAS = [-4, -2, 0]
-OUTPUT_HOUR_DELTAS = [2, 4, 6]
+OUTPUT_HOUR_DELTAS = [2, 6]
 WINDOW = timedelta(hours=1)
 
 
