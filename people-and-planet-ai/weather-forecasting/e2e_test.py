@@ -12,79 +12,89 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable
+from __future__ import annotations
 
-import conftest
+from datetime import datetime
+import textwrap
+
+# The conftest contains a bunch of reusable fixtures used all over the place.
+# If we use a fixture not defined here, it must be on the conftest!
+#   https://docs.pytest.org/en/latest/explanation/fixtures.html
+import conftest  # python-docs-samples/people-and-planet-ai/conftest.py
+import numpy as np
 import pytest
+import torch
 
-PRELUDE = """
-from unittest.mock import Mock
-import sys
+from serving import data
+from trainer.model import Model
 
-sys.modules['google.colab'] = Mock()
-exit = Mock()
-"""
+
+# ---------- FIXTURES ---------- #
 
 
 @pytest.fixture(scope="session")
 def test_name(python_version: str) -> str:
-    return f"ppai/weather-forecasting-py{python_version}"
+    # Many fixtures expect a fixture called `test_name`, so be sure to define it!
+    return f"ppai/weather-py{python_version}"
 
 
-@pytest.fixture(scope="session")
-def create_datasets(
-    project: str, bucket_name: str, location: str, unique_name: str
-) -> None:
-    # Since creating the datasets is a shell command, it is disabled
-    # in the notebook, so we run it here.
-    # ⚠️ If this command changes, please update the notebook!
-    conftest.run_cmd(
-        "python",
-        "datasets.py",
-        f"--output-path=gs://{bucket_name}/weather/data",
-        "--num-dates=1",
-        "--num-points=1",
-        "--runner=DataflowRunner",
-        f"--project={project}",
-        f"--region={location}",
-        f"--temp_location=gs://{bucket_name}/temp",
-        # Parameters for testing only, not used in the notebook.
-        f"--job_name={unique_name}",  # Dataflow job name
+# @pytest.fixture(scope="session")
+# def data_path(bucket_name: str) -> str:
+#     # The Vertex AI training expects data here.
+#     gcs_path = f"gs://{bucket_name}/weather/data"
+#     conftest.run_cmd(
+#         "python",
+#         "create_dataset.py",
+#         "tensorflow",
+#         f"--data-path={gcs_path}",
+#         "--points-per-class=1",
+#         "--max-requests=1",
+#     )
+#     return gcs_path
+
+
+# @pytest.fixture(scope="session")
+# def model_path(bucket_name: str) -> str:
+#     # This is a different path than where Vertex AI saves its model.
+#     gcs_path = f"gs://{bucket_name}/pretrained-model.pt"
+#     conftest.run_cmd("gsutil", "-m", "cp", "-r", "./pretrained-model.pt", gcs_path)
+#     return gcs_path
+
+# ---------- TESTS ---------- #
+
+
+# def test_pretrained_model() -> None:
+#     data.ee_init()
+#     num_outputs = len(data.OUTPUT_HOUR_DELTAS)
+#     patch_size = 16
+#     date = datetime(2019, 9, 3, 18)
+#     patch = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
+#     inputs = np.stack([patch.swapaxes(0, -1)])
+#     assert inputs.shape == (1, 52, patch_size, patch_size)
+#     model = Model.load("model")
+#     predictions = model(torch.from_numpy(inputs))
+#     assert predictions.shape == (1, num_outputs, patch_size, patch_size)
+
+
+def test_weather_forecasting_notebook(project: str) -> None:
+    conftest.run_notebook_parallel(
+        "README.ipynb",
+        prelude=textwrap.dedent(
+            f"""\
+            from serving.data import ee_init
+
+            # Google Cloud resources.
+            project = {repr(project)}
+
+            # Initialize Earth Engine.
+            ee_init()
+            """
+        ),
+        sections={
+            "# First": {},
+            "# Second": {
+                "replace": {"project": '"wrong"'},
+                "variables": {"x": 0},
+            },
+        },
     )
-    # No need to clean up, files are deleted when the bucket is deleted.
-
-
-@pytest.fixture(scope="session")
-def model_url(
-    bucket_name: str,
-    cloud_run_deploy: Callable[..., str],
-) -> str:
-    # Since deploying the model is a shell command, it is disabled
-    # in the notebook, so we run it here.
-    # ⚠️ If the command flags change, please update the notebook!
-    #   https://cloud.google.com/sdk/gcloud/reference/run/deploy
-    return cloud_run_deploy(
-        "serving",  # source_dir
-        f"--update-env-vars=MODEL_PATH=gs://{bucket_name}/weather/model.pt",
-        # "--memory=1G",
-        "--no-allow-unauthenticated",
-    )
-
-
-def test_notebook(
-    project: str,
-    bucket_name: str,
-    location: str,
-    unique_name: str,
-    create_datasets: None,
-    model_url: str,
-) -> None:
-    substitutions = {
-        "project": project,
-        "bucket": bucket_name,
-        "location": location,
-        "display_name": unique_name,  # Vertex AI job name
-        "epochs": 1,
-        "model_url": model_url,
-    }
-    conftest.run_notebook("README.ipynb", substitutions, PRELUDE)

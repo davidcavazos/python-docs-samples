@@ -1,4 +1,4 @@
 *.egg-info
 build/
 data/
-model.pt
+model/

@@ -84,13 +84,14 @@ class Normalization(torch.nn.Module):
 class Model(torch.nn.Module):
     def __init__(self, normalization: Normalization) -> None:
         super().__init__()
+        self.normalization = normalization
         inputs = 52
         hidden1 = 64
         hidden2 = 16
-        outputs = 3
+        outputs = 2
         kernel_size = (5, 5)
         self.layers = torch.nn.Sequential(
-            normalization,
+            self.normalization,
             torch.nn.Conv2d(inputs, hidden1, kernel_size),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(hidden1, hidden2, kernel_size),
@@ -101,6 +102,22 @@ class Model(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
+
+    def save(self, model_path: str):
+        os.makedirs(model_path, exist_ok=True)
+        torch.save(self.normalization.std, os.path.join(model_path, "std.pt"))
+        torch.save(self.normalization.mean, os.path.join(model_path, "mean.pt"))
+        torch.save(self.state_dict(), os.path.join(model_path, "state_dict.pt"))
+
+    @staticmethod
+    def load(model_path: str) -> Model:
+        std = torch.load(os.path.join(model_path, "std.pt"))
+        mean = torch.load(os.path.join(model_path, "mean.pt"))
+        state_dict = torch.load(os.path.join(model_path, "state_dict.pt"))
+        model = Model(Normalization(std, mean))
+        model.load_state_dict(state_dict)
+        model.eval()
+        return model.to(DEVICE)
 
 
 def train_test_split(dataset: WeatherDataset, ratio: float) -> list[Subset]:
@@ -195,7 +212,7 @@ def run(
             f"test_loss: {test_loss:.4f}"
         )
 
-    torch.save(model, model_path)
+    model.save(model_path)
     print(f"Model saved to path: {model_path}")
 
 

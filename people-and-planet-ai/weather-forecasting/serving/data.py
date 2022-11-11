@@ -29,8 +29,8 @@ import numpy as np
 from numpy.lib.recfunctions import structured_to_unstructured
 import requests
 
+# Constants.
 SCALE = 10000  # meters per pixel
-
 INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
 WINDOW = timedelta(hours=1)
@@ -105,7 +105,7 @@ def get_inputs_image(date: datetime) -> ee.Image:
 
 
 def get_labels_image(date: datetime) -> ee.Image:
-    dates = [date + timedelta(hours=h) for h in INPUT_HOUR_DELTAS]
+    dates = [date + timedelta(hours=h) for h in OUTPUT_HOUR_DELTAS]
     return get_gpm_sequence(dates)
 
 
