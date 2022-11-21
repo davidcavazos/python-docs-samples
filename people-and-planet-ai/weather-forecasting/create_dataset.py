@@ -35,14 +35,13 @@ from serving import data
 # Default values.
 NUM_DATES = 100
 POINTS_PER_CLASS = 100
-PATCH_SIZE = 128
 MAX_REQUESTS = 20  # default EE request quota
 
-# Point sampling.
+# Constants.
+PATCH_SIZE = 128
 START_DATE = datetime(2017, 7, 10)
 END_DATE = datetime.now() - timedelta(days=1)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
-MAX_PRECIPITATION = 30  # millimeters
 
 
 def sample_points(date: datetime, points_per_class: int) -> Iterable[tuple]:
@@ -59,7 +58,8 @@ def sample_points(date: datetime, points_per_class: int) -> Iterable[tuple]:
     Yields: (date, lon_lat) pairs.
     """
     data.ee_init()
-    image = data.get_labels_image(date).clamp(0, MAX_PRECIPITATION).int()
+    # Bucketize into integers between 0 and 30.
+    image = data.get_labels_image(date).clamp(0, 30).int()
     points = image.stratifiedSample(
         points_per_class,
         region=ee.Geometry.Polygon(POLYGON),
@@ -70,48 +70,41 @@ def sample_points(date: datetime, points_per_class: int) -> Iterable[tuple]:
         yield (date, point["geometry"]["coordinates"])
 
 
-def get_training_example(
-    date: datetime, point: tuple, patch_size: int = PATCH_SIZE
-) -> tuple:
+def get_training_example(date: datetime, point: tuple) -> tuple:
     """Gets an (inputs, labels) training example.
 
     Args:
         date: The date of interest.
         point: A (longitude, latitude) coordinate.
-        patch_size: Size in pixels of the surrounding square patch.
 
     Returns: An (inputs, labels) pair of NumPy arrays.
     """
     data.ee_init()
     return (
-        data.get_inputs_patch(date, point, patch_size),
-        data.get_labels_patch(date, point, patch_size),
+        data.get_inputs_patch(date, point, PATCH_SIZE),
+        data.get_labels_patch(date, point, PATCH_SIZE),
     )
 
 
-def try_get_example(
-    date: datetime, point: tuple, patch_size: int = PATCH_SIZE
-) -> Iterable[tuple]:
+def try_get_example(date: datetime, point: tuple) -> Iterable[tuple]:
     """Wrapper over `get_training_examples` that allows it to simply log errors instead of crashing."""
     try:
-        yield get_training_example(date, point, patch_size)
+        yield get_training_example(date, point)
     except requests.exceptions.HTTPError as e:
         logging.exception(e)
 
 
-def write_npz_file(
-    inputs: np.ndarray, labels: np.ndarray, file_prefix: str = "data/"
-) -> str:
+def write_npz(inputs: np.ndarray, labels: np.ndarray, data_path: str = "data/") -> str:
     """Writes an (inputs, labels) pair into a compressed NumPy file.
 
     Args:
         inputs: Input data as a NumPy array.
         labels: Label data as a NumPy array.
-        file_prefix: Directory path to save files to.
+        data_path: Directory path to save files to.
 
     Returns: The filename of the data file.
     """
-    filename = FileSystems.join(file_prefix, f"{uuid.uuid4()}.npz")
+    filename = FileSystems.join(data_path, f"{uuid.uuid4()}.npz")
     with FileSystems.create(filename) as f:
         np.savez_compressed(f, inputs=inputs, labels=labels)
     logging.info(filename)
@@ -122,7 +115,6 @@ def run(
     data_path: str,
     num_dates: int = NUM_DATES,
     points_per_class: int = POINTS_PER_CLASS,
-    patch_size: int = PATCH_SIZE,
     max_requests: int = MAX_REQUESTS,
     beam_args: Optional[List[str]] = None,
 ) -> None:
@@ -136,7 +128,6 @@ def run(
         data_path: Directory path to save the TFRecord files.
         num_dates: Number of dates to get training points from.
         points_per_class: Number of points per classification to pick.
-        patch_size: Size in pixels of the surrounding square patch.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
@@ -157,8 +148,8 @@ def run(
             | "📆 Random dates" >> beam.Create(random_dates)
             | "📌 Sample points" >> beam.FlatMap(sample_points, points_per_class)
             | "🃏 Reshuffle" >> beam.Reshuffle()
-            | "📑 Get example" >> beam.FlatMapTuple(try_get_example, patch_size)
-            | "📚 Write NPZ files" >> beam.MapTuple(write_npz_file, data_path)
+            | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
+            | "📚 Write NPZ files" >> beam.MapTuple(write_npz, data_path)
         )
 
 
@@ -171,7 +162,6 @@ if __name__ == "__main__":
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--num-dates", type=int, default=1)
     parser.add_argument("--points-per-class", type=int, default=1)
-    parser.add_argument("--patch-size", type=int, default=64)
     parser.add_argument("--max-requests", type=int, default=20)
     args, beam_args = parser.parse_known_args()
 
@@ -179,7 +169,6 @@ if __name__ == "__main__":
         data_path=args.data_path,
         num_dates=args.num_dates,
         points_per_class=args.points_per_class,
-        patch_size=args.patch_size,
         max_requests=args.max_requests,
         beam_args=beam_args,
     )
