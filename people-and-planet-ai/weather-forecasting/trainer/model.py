@@ -103,7 +103,7 @@ class Model(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
-    def save(self, model_path: str):
+    def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
         torch.save(self.normalization.std, os.path.join(model_path, "std.pt"))
         torch.save(self.normalization.mean, os.path.join(model_path, "mean.pt"))

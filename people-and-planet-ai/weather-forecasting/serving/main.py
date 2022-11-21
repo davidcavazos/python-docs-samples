@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import flask
-
 import data
+import flask
 
 app = flask.Flask(__name__)
 

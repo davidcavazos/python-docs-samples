@@ -91,10 +91,7 @@ def test_weather_forecasting_notebook(project: str) -> None:
             """
         ),
         sections={
-            "# First": {},
-            "# Second": {
-                "replace": {"project": '"wrong"'},
-                "variables": {"x": 0},
-            },
+            "# 📚 Understand the data": {},
+            "# 🗄 Create the dataset": {},
         },
     )
