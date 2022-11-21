@@ -14,18 +14,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import multiprocessing
 import os
 import platform
 import re
 import subprocess
-from unittest import mock
+import textwrap
 import uuid
 from collections.abc import Callable, Iterable
+from datetime import datetime
+from unittest import mock
 
-from google.cloud import storage
 import pytest
+from google.cloud import storage
 
 
 @pytest.fixture(scope="session")
@@ -202,9 +203,9 @@ def run_notebook(
     skip_shell_commands: bool = False,
     until_end: bool = False,
 ) -> None:
+    import nbformat
     from nbclient.client import NotebookClient
     from nbclient.exceptions import CellExecutionError
-    import nbformat
 
     def notebook_filter_section(
         start: str,
@@ -263,10 +264,8 @@ def run_notebook(
             cell["source"] = shell_command_re.sub(cmd, cell["source"])
         else:
             cmd = [
-                "import subprocess",
-                "_cmd = f'''\\1'''",
-                "print(f'>> {_cmd}')",
-                "subprocess.run(_cmd, shell=True, check=True)",
+                r"print(f'''\1''')",
+                r"_subprocess.run(f'''\1''', shell=True, check=True)",
             ]
             cell["source"] = shell_command_re.sub("\n".join(cmd), cell["source"])
 
@@ -279,7 +278,19 @@ def run_notebook(
             cell["source"] = cell["source"].replace(old, new)
 
     # Prepend the prelude cell.
-    nb.cells = [nbformat.v4.new_code_cell(prelude)] + nb.cells
+    prelude_source = (
+        textwrap.dedent(
+            f"""\
+            #--- Prelude ---#
+            import subprocess as _subprocess
+            def print(msg):
+                header = '\\n(' + {repr(section)} + ') ➜ '
+                _subprocess.run(["python", "-c", f"print({{repr(header)}} + {{repr(msg)}})"], check=True)
+            """
+        )
+        + prelude
+    )
+    nb.cells = [nbformat.v4.new_code_cell(prelude_source)] + nb.cells
 
     # Run the notebook.
     error = ""

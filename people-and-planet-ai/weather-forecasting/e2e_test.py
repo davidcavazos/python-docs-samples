@@ -63,17 +63,17 @@ def test_name(python_version: str) -> str:
 # ---------- TESTS ---------- #
 
 
-# def test_pretrained_model() -> None:
-#     data.ee_init()
-#     num_outputs = len(data.OUTPUT_HOUR_DELTAS)
-#     patch_size = 16
-#     date = datetime(2019, 9, 3, 18)
-#     patch = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
-#     inputs = np.stack([patch.swapaxes(0, -1)])
-#     assert inputs.shape == (1, 52, patch_size, patch_size)
-#     model = Model.load("model")
-#     predictions = model(torch.from_numpy(inputs))
-#     assert predictions.shape == (1, num_outputs, patch_size, patch_size)
+def test_pretrained_model() -> None:
+    data.ee_init()
+    num_outputs = len(data.OUTPUT_HOUR_DELTAS)
+    patch_size = 16
+    date = datetime(2019, 9, 3, 18)
+    patch = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
+    inputs = np.stack([patch.swapaxes(0, -1)])
+    assert inputs.shape == (1, 52, patch_size, patch_size)
+    model = Model.load("model")
+    predictions = model(torch.from_numpy(inputs))
+    assert predictions.shape == (1, num_outputs, patch_size, patch_size)
 
 
 def test_weather_forecasting_notebook(project: str) -> None:
