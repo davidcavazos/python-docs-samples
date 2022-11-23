@@ -40,19 +40,19 @@ def test_name(python_version: str) -> str:
     return f"ppai/weather-py{python_version}"
 
 
-# @pytest.fixture(scope="session")
-# def data_path(bucket_name: str) -> str:
-#     # The Vertex AI training expects data here.
-#     gcs_path = f"gs://{bucket_name}/weather/data"
-#     conftest.run_cmd(
-#         "python",
-#         "create_dataset.py",
-#         "tensorflow",
-#         f"--data-path={gcs_path}",
-#         "--points-per-class=1",
-#         "--max-requests=1",
-#     )
-#     return gcs_path
+@pytest.fixture(scope="session")
+def data_path(bucket_name: str) -> str:
+    # The Vertex AI training expects data here.
+    gcs_path = f"gs://{bucket_name}/weather/dataset"
+    conftest.run_cmd(
+        "python",
+        "create_dataset.py",
+        f"--data-path={gcs_path}",
+        "--num-dates=1",
+        "--num-bins=1",
+        "--num-points=1",
+    )
+    return gcs_path
 
 
 # @pytest.fixture(scope="session")
@@ -83,6 +83,7 @@ def test_weather_forecasting_notebook(
     project: str,
     bucket_name: str,
     location: str,
+    data_path: str,
 ) -> None:
     def dataflow_dataset_flags() -> str:
         return " ".join(
