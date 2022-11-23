@@ -107,7 +107,8 @@ def try_get_example(date: datetime, point: tuple) -> Iterable[tuple]:
     """Wrapper over `get_training_examples` that allows it to simply log errors instead of crashing."""
     try:
         yield get_training_example(date, point)
-    except requests.exceptions.HTTPError as e:
+    except (requests.exceptions.HTTPError, ee.ee_exception.EEException) as e:
+        logging.error(f"🛑 failed to get example: {date} {point}")
         logging.exception(e)
 
 
