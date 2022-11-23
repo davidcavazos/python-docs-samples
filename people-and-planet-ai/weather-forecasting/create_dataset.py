@@ -34,13 +34,13 @@ from serving import data
 
 # Default values.
 NUM_DATES = 100
-POINTS_PER_CLASS = 100
+POINTS_PER_CLASS = 1
 MAX_REQUESTS = 20  # default EE request quota
 
 # Constants.
 PATCH_SIZE = 128
 START_DATE = datetime(2017, 7, 10)
-END_DATE = datetime.now() - timedelta(days=1)
+END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
 
 
@@ -160,9 +160,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
-    parser.add_argument("--num-dates", type=int, default=1)
-    parser.add_argument("--points-per-class", type=int, default=1)
-    parser.add_argument("--max-requests", type=int, default=20)
+    parser.add_argument("--num-dates", type=int, default=NUM_DATES)
+    parser.add_argument("--points-per-class", type=int, default=POINTS_PER_CLASS)
+    parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
     args, beam_args = parser.parse_known_args()
 
     run(

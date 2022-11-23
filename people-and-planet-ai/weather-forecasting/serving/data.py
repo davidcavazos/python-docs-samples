@@ -33,7 +33,7 @@ import requests
 SCALE = 10000  # meters per pixel
 INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
-WINDOW = timedelta(hours=1)
+WINDOW = timedelta(days=1)
 
 
 def ee_init() -> None:
@@ -55,12 +55,13 @@ def ee_init() -> None:
 
 # https://developers.google.com/earth-engine/datasets/catalog/NASA_GPM_L3_IMERG_V06
 def get_gpm(date: datetime) -> ee.Image:
-    window_start = date.isoformat()
-    window_end = (date + WINDOW).isoformat()
+    window_start = (date - WINDOW).isoformat()
+    window_end = date.isoformat()
     return (
         ee.ImageCollection("NASA/GPM_L3/IMERG_V06")
         .filterDate(window_start, window_end)
         .select("precipitationCal")
+        .sort("system:time_start", False)
         .mosaic()
         .unmask(0)
         .float()
@@ -74,12 +75,13 @@ def get_gpm_sequence(dates: list[datetime]) -> ee.Image:
 
 # https://developers.google.com/earth-engine/datasets/catalog/NOAA_GOES_16_MCMIPF
 def get_goes16(date: datetime) -> ee.Image:
-    window_start = date.isoformat()
-    window_end = (date + WINDOW).isoformat()
+    window_start = (date - WINDOW).isoformat()
+    window_end = date.isoformat()
     return (
         ee.ImageCollection("NOAA/GOES/16/MCMIPF")
         .filterDate(window_start, window_end)
         .select("CMI_C.*")
+        .sort("system:time_start", False)
         .mosaic()
         .unmask(0)
         .float()
@@ -139,29 +141,29 @@ def get_labels_patch(date: datetime, point: tuple, patch_size: int) -> np.ndarra
     return structured_to_unstructured(patch)
 
 
-@retry.Retry(deadline=10 * 60)  # seconds
-def get_patch(
-    image: ee.Image, lonlat: tuple[float, float], patch_size: int, scale: int
-) -> np.ndarray:
+@retry.Retry()
+def get_patch(image: ee.Image, point: tuple, patch_size: int, scale: int) -> np.ndarray:
     """Fetches a patch of pixels from Earth Engine.
 
     It retries if we get error "429: Too Many Requests".
 
     Args:
         image: Image to get the patch from.
-        lonlat: A (longitude, latitude) pair for the point of interest.
+        point: A (longitude, latitude) pair for the point of interest.
         patch_size: Size in pixels of the surrounding square patch.
         scale: Number of meters per pixel.
 
     Raises:
         requests.exceptions.RequestException
 
-    Returns: The requested patch of pixels as a NumPy array with shape (width, height, bands).
+    Returns:
+        The requested patch of pixels as a structured
+        NumPy array with shape (width, height).
     """
-    point = ee.Geometry.Point(lonlat)
+    geometry = ee.Geometry.Point(point)
     url = image.getDownloadURL(
         {
-            "region": point.buffer(scale * patch_size / 2, 1).bounds(1),
+            "region": geometry.buffer(scale * patch_size / 2, 1).bounds(1),
             "dimensions": [patch_size, patch_size],
             "format": "NPY",
         }

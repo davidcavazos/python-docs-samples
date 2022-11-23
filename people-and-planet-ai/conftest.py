@@ -19,6 +19,7 @@ import os
 import platform
 import re
 import subprocess
+import sys
 import textwrap
 import uuid
 from collections.abc import Callable, Iterable
@@ -263,11 +264,7 @@ def run_notebook(
             cmd = "pass"
             cell["source"] = shell_command_re.sub(cmd, cell["source"])
         else:
-            cmd = [
-                r"print(f'''\1''')",
-                r"_subprocess.run(f'''\1''', shell=True, check=True)",
-            ]
-            cell["source"] = shell_command_re.sub("\n".join(cmd), cell["source"])
+            cell["source"] = shell_command_re.sub(r"_run(f'''\1''')", cell["source"])
 
         # Apply variable substitutions.
         for regex, new_value in compiled_substitutions:
@@ -277,20 +274,38 @@ def run_notebook(
         for old, new in replace.items():
             cell["source"] = cell["source"].replace(old, new)
 
+        # Clear outputs.
+        cell["outputs"] = []
+
     # Prepend the prelude cell.
-    prelude_source = (
-        textwrap.dedent(
-            f"""\
-            #--- Prelude ---#
-            import subprocess as _subprocess
-            def print(msg):
-                header = '\\n(' + {repr(section)} + ') ➜ '
-                _subprocess.run(["python", "-c", f"print({{repr(header)}} + {{repr(msg)}})"], check=True)
-            """
-        )
+    prelude_src = textwrap.dedent(
+        """\
+        def _run(cmd):
+            import subprocess as _sp
+            import sys as _sys
+            _p = _sp.run(cmd, shell=True, stdout=_sp.PIPE, stderr=_sp.PIPE)
+            _stdout = _p.stdout.decode('utf-8').strip()
+            _stderr = _p.stderr.decode('utf-8').strip()
+            if _stdout:
+                print(f'➜ !{cmd}')
+                print(_stdout)
+            if _stderr:
+                print(f'➜ !{cmd}', file=_sys.stderr)
+                print(_stderr, file=_sys.stderr)
+            if _p.returncode:
+                raise RuntimeError('\\n'.join([
+                    f"Command returned non-zero exit status {_p.returncode}.",
+                    f"-------- command --------",
+                    f"{cmd}",
+                    f"-------- stderr --------",
+                    f"{_stderr}",
+                    f"-------- stdout --------",
+                    f"{_stdout}",
+                ]))
+        """
         + prelude
     )
-    nb.cells = [nbformat.v4.new_code_cell(prelude_source)] + nb.cells
+    nb.cells = [nbformat.v4.new_code_cell(prelude_src)] + nb.cells
 
     # Run the notebook.
     error = ""
@@ -300,7 +315,16 @@ def run_notebook(
     except CellExecutionError as e:
         # Remove colors and other escape characters to make it easier to read in the logs.
         #   https://stackoverflow.com/a/33925425
-        error = re.sub(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]", "", str(e))
+        color_chars = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
+        error = color_chars.sub("", str(e))
+        for cell in nb.cells:
+            if cell["cell_type"] != "code":
+                continue
+            for output in cell["outputs"]:
+                if output.get("name") == "stdout":
+                    print(color_chars.sub("", output["text"]))
+                elif output.get("name") == "stderr":
+                    print(color_chars.sub("", output["text"]), file=sys.stderr)
 
     if error:
         raise RuntimeError(

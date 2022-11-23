@@ -34,18 +34,17 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class WeatherDataset(Dataset):
     def __init__(self, data_path: str) -> None:
-        self.files = glob(os.path.join(data_path, "**", "*.npz"), recursive=True) * 100
+        self.files = glob(os.path.join(data_path, "**", "*.npz"), recursive=True)
 
     def __len__(self) -> int:
         return len(self.files)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        # Convert to channels-last format since that's what PyTorch expects.
         with open(self.files[idx], "rb") as f:
             npz = np.load(f)
-            (inputs_np, labels_np) = (npz["inputs"], npz["labels"])
-            inputs = torch.from_numpy(inputs_np).transpose(0, -1)
-            labels = torch.from_numpy(labels_np).transpose(0, -1)
+            # Convert to channels-last format since that's what PyTorch expects.
+            inputs = torch.from_numpy(npz["inputs"]).transpose(0, -1)
+            labels = torch.from_numpy(npz["labels"]).transpose(0, -1)
             return (inputs, labels)
 
 
@@ -84,12 +83,13 @@ class Normalization(torch.nn.Module):
 class Model(torch.nn.Module):
     def __init__(self, normalization: Normalization) -> None:
         super().__init__()
-        self.normalization = normalization
         inputs = 52
         hidden1 = 64
         hidden2 = 16
         outputs = 2
         kernel_size = (5, 5)
+
+        self.normalization = normalization
         self.layers = torch.nn.Sequential(
             self.normalization,
             torch.nn.Conv2d(inputs, hidden1, kernel_size),
