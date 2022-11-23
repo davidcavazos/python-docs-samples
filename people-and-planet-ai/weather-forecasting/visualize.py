@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -21,10 +23,12 @@ def render_rgb_images(
     values: np.ndarray, min: float = 0.0, max: float = 1.0
 ) -> np.ndarray:
     """Renders a numeric NumPy array with shape (width, height, rgb) as an image.
+
     Args:
         values: A float array with shape (width, height, rgb).
         min: Minimum value in the values.
         max: Maximum value in the values.
+
     Returns: An uint8 array with shape (width, height, rgb).
     """
     scaled_values = (values - min) / (max - min)
@@ -34,9 +38,11 @@ def render_rgb_images(
 
 def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray:
     """Renders a classifications NumPy array with shape (width, height, 1) as an image.
+
     Args:
         values: An uint8 array with shape (width, height, 1).
         palette: List of hex encoded colors.
+
     Returns: An uint8 array with shape (width, height, rgb) with colors from the palette.
     """
     # Create a color map from a hex color palette.

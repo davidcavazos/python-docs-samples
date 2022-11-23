@@ -84,19 +84,22 @@ def sample_points(
         yield (date, point["geometry"]["coordinates"])
 
 
-def get_training_example(date: datetime, point: tuple) -> tuple:
+def get_training_example(
+    date: datetime, point: tuple, patch_size: int = PATCH_SIZE
+) -> tuple:
     """Gets an (inputs, labels) training example.
 
     Args:
         date: The date of interest.
         point: A (longitude, latitude) coordinate.
+        patch_size: Size in pixels of the surrounding square patch.
 
     Returns: An (inputs, labels) pair of NumPy arrays.
     """
     data.ee_init()
     return (
-        data.get_inputs_patch(date, point, PATCH_SIZE),
-        data.get_labels_patch(date, point, PATCH_SIZE),
+        data.get_inputs_patch(date, point, patch_size),
+        data.get_labels_patch(date, point, patch_size),
     )
 
 
