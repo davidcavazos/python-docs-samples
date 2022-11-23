@@ -84,6 +84,18 @@ def test_weather_forecasting_notebook(
     bucket_name: str,
     location: str,
 ) -> None:
+    def dataflow_dataset_flags() -> str:
+        return " ".join(
+            [
+                '--runner="DataflowRunner"',
+                f"--job_name={unique_name}-dataset",
+                "--num-dates=1",
+                "--num-bins=1",
+                "--num-points=1",
+                "--max-requests=1",
+            ]
+        )
+
     conftest.run_notebook_parallel(
         "README.ipynb",
         prelude=textwrap.dedent(
@@ -102,18 +114,8 @@ def test_weather_forecasting_notebook(
         sections={
             "# 📚 Understand the data": {},
             "# 🗄 Create the dataset": {
-                "replace": {
-                    '--runner="DataflowRunner"': " ".join(
-                        [
-                            '--runner="DataflowRunner"',
-                            f"--job_name={unique_name}-dataset",
-                            "--num-dates=1",
-                            "--num-bins=1",
-                            "--num-points=1",
-                            "--max-requests=1",
-                        ]
-                    )
-                },
+                "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags()},
             },
+            "# 🧠 Train the model": {},
         },
     )

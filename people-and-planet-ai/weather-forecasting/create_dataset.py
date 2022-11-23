@@ -45,7 +45,9 @@ END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
 
 
-def sample_points(date: datetime, num_bins: int, num_points: int) -> Iterable[tuple]:
+def sample_points(
+    date: datetime, num_bins: int = NUM_BINS, num_points: int = NUM_POINTS
+) -> Iterable[tuple]:
     """Selects around the same number of points for every classification.
 
     Since our labels are numeric continuous values, we convert them into
