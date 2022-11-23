@@ -78,7 +78,11 @@ def test_name(python_version: str) -> str:
 #     assert predictions.shape == (1, num_outputs, patch_size, patch_size)
 
 
-def test_weather_forecasting_notebook(project: str, bucket_name: str) -> None:
+def test_weather_forecasting_notebook(
+    project: str,
+    bucket_name: str,
+    location: str,
+) -> None:
     conftest.run_notebook_parallel(
         "README.ipynb",
         prelude=textwrap.dedent(
@@ -88,6 +92,7 @@ def test_weather_forecasting_notebook(project: str, bucket_name: str) -> None:
             # Google Cloud resources.
             project = {repr(project)}
             bucket = {repr(bucket_name)}
+            location = {repr(location)}
 
             # Initialize Earth Engine.
             ee_init()
