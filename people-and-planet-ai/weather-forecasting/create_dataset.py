@@ -34,7 +34,8 @@ from serving import data
 
 # Default values.
 NUM_DATES = 100
-POINTS_PER_CLASS = 1
+NUM_BINS = 10
+NUM_POINTS = 1
 MAX_REQUESTS = 20  # default EE request quota
 
 # Constants.
@@ -44,24 +45,35 @@ END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
 
 
-def sample_points(date: datetime, points_per_class: int) -> Iterable[tuple]:
+def sample_points(date: datetime, num_bins: int, num_points: int) -> Iterable[tuple]:
     """Selects around the same number of points for every classification.
 
     Since our labels are numeric continuous values, we convert them into
     integers within a predifined range. Each integer value is treated
     as a different classification.
 
+    From analyzing the precipitation data, most values are within 0 and 30,
+    but values above 30 still exist. So we clamp them to values to
+    between 0 and 30, and then bucketize them by `num_bins`.
+
     Args:
         date: The date of interest.
-        points_per_class: Number of points per classification to pick.
+        num_bins: Number of bins for stratified sampling.
+        num_points: Number of points per bin to pick.
 
     Yields: (date, lon_lat) pairs.
     """
     data.ee_init()
-    # Bucketize into integers between 0 and 30.
-    image = data.get_labels_image(date).clamp(0, 30).int()
-    points = image.stratifiedSample(
-        points_per_class,
+    max_value = 30
+    bins_image = (
+        data.get_labels_image(date)
+        .clamp(0, max_value)
+        .divide(max_value)
+        .multiply(num_bins - 1)
+        .uint8()
+    )
+    points = bins_image.stratifiedSample(
+        num_points,
         region=ee.Geometry.Polygon(POLYGON),
         scale=data.SCALE,
         geometries=True,
@@ -114,7 +126,8 @@ def write_npz(inputs: np.ndarray, labels: np.ndarray, data_path: str = "data/") 
 def run(
     data_path: str,
     num_dates: int = NUM_DATES,
-    points_per_class: int = POINTS_PER_CLASS,
+    num_bins: int = NUM_BINS,
+    num_points: int = NUM_POINTS,
     max_requests: int = MAX_REQUESTS,
     beam_args: Optional[List[str]] = None,
 ) -> None:
@@ -127,7 +140,8 @@ def run(
     Args:
         data_path: Directory path to save the TFRecord files.
         num_dates: Number of dates to get training points from.
-        points_per_class: Number of points per classification to pick.
+        num_bins: Number of bins for stratified sampling.
+        num_points: Number of points per bin to pick.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
@@ -146,7 +160,7 @@ def run(
         (
             pipeline
             | "📆 Random dates" >> beam.Create(random_dates)
-            | "📌 Sample points" >> beam.FlatMap(sample_points, points_per_class)
+            | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins, num_points)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
             | "📚 Write NPZ files" >> beam.MapTuple(write_npz, data_path)
@@ -161,14 +175,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
     parser.add_argument("--num-dates", type=int, default=NUM_DATES)
-    parser.add_argument("--points-per-class", type=int, default=POINTS_PER_CLASS)
+    parser.add_argument("--num-bins", type=int, default=NUM_BINS)
+    parser.add_argument("--num-points", type=int, default=NUM_POINTS)
     parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
     args, beam_args = parser.parse_known_args()
 
     run(
         data_path=args.data_path,
         num_dates=args.num_dates,
-        points_per_class=args.points_per_class,
+        num_bins=args.num_bins,
+        num_points=args.num_points,
         max_requests=args.max_requests,
         beam_args=beam_args,
     )

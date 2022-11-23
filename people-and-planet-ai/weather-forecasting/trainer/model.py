@@ -143,13 +143,13 @@ def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
 
     total_loss = 0.0
     model.train()
-    for inputs, labels in loader:
-        inputs = inputs.to(DEVICE, non_blocking=True)
-        labels = labels.to(DEVICE, non_blocking=True)
+    for inputs_batch, labels_batch in loader:
+        inputs_batch = inputs_batch.to(DEVICE, non_blocking=True)
+        labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
         # Compute prediction error.
-        predictions = model(inputs)
-        batch_loss = loss(predictions, labels)
+        predictions = model(inputs_batch)
+        batch_loss = loss(predictions, labels_batch)
         total_loss += batch_loss.item()
 
         # Backpropagation.
@@ -163,12 +163,12 @@ def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
     total_loss = 0.0
     model.eval()
     with torch.no_grad():
-        for inputs, labels in loader:
-            inputs = inputs.to(DEVICE, non_blocking=True)
-            labels = labels.to(DEVICE, non_blocking=True)
+        for inputs_batch, labels_batch in loader:
+            inputs_batch = inputs_batch.to(DEVICE, non_blocking=True)
+            labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
-            predictions = model(inputs)
-            total_loss = loss(predictions, labels).item()
+            predictions = model(inputs_batch)
+            total_loss = loss(predictions, labels_batch).item()
     return total_loss / len(loader)
 
 
@@ -184,6 +184,7 @@ def run(
     print(f"epochs: {epochs}")
     print(f"batch_size: {batch_size}")
     print(f"train_test_ratio: {train_test_ratio}")
+    print(f"DEVICE: {DEVICE}")
     print("-" * 40)
 
     dataset = WeatherDataset(data_path)
@@ -197,12 +198,12 @@ def run(
 
     train_loader = data_loader(train_data, batch_size, shuffle=True)
     test_loader = data_loader(test_data, batch_size)
-    loss = torch.nn.SmoothL1Loss()
-    print(f"loss: {loss}")
 
     model = Model(normalization).to(DEVICE)
-    print(f"Device: {DEVICE}")
     print(model)
+
+    loss = torch.nn.SmoothL1Loss()
+    print(f"loss: {loss}")
     for epoch in range(epochs):
         train_loss = train(model, train_loader, loss)
         test_loss = test(model, test_loader, loss)

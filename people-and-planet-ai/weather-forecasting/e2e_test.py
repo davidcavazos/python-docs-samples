@@ -79,6 +79,7 @@ def test_name(python_version: str) -> str:
 
 
 def test_weather_forecasting_notebook(
+    unique_name: str,
     project: str,
     bucket_name: str,
     location: str,
@@ -100,6 +101,19 @@ def test_weather_forecasting_notebook(
         ),
         sections={
             "# 📚 Understand the data": {},
-            "# 🗄 Create the dataset": {},
+            "# 🗄 Create the dataset": {
+                "replace": {
+                    '--runner="DataflowRunner"': " ".join(
+                        [
+                            '--runner="DataflowRunner"',
+                            f"--job_name={unique_name}-dataset",
+                            "--num-dates=1",
+                            "--num-bins=1",
+                            "--num-points=1",
+                            "--max-requests=1",
+                        ]
+                    )
+                },
+            },
         },
     )
