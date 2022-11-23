@@ -68,7 +68,8 @@ class Normalization(torch.nn.Module):
         shape = [x if i == idx else 1 for i, x in enumerate(first.shape)]
 
         size = 0
-        (sum, sum_sq) = (torch.zeros(shape), torch.zeros(shape))
+        sum = torch.zeros(shape).to(DEVICE, non_blocking=True)
+        sum_sq = torch.zeros(shape).to(DEVICE, non_blocking=True)
         for inputs, _ in data_loader(dataset, batch_size):
             inputs = inputs.to(DEVICE, non_blocking=True)
             sum += inputs.sum(dims).reshape(shape)
@@ -102,6 +103,14 @@ class Model(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
+
+    def predict(self, inputs: np.ndarray, batch: bool = True) -> np.ndarray:
+        inputs_batch = inputs if batch else np.stack([inputs])
+        channels_first_inputs = inputs_batch.swapaxes(1, -1)
+        inputs_pt = torch.from_numpy(channels_first_inputs).to(DEVICE)
+        with torch.no_grad():
+            predictions = self(inputs_pt).cpu().numpy().swapaxes(1, -1)
+            return predictions if batch else predictions[0]
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
