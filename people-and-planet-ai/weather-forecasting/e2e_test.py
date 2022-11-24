@@ -118,5 +118,6 @@ def test_weather_forecasting_notebook(
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags()},
             },
             "# 🧠 Train the model": {"variables": {"data_path": data_path}},
+            "# 🔮 Make predictions": {},
         },
     )
