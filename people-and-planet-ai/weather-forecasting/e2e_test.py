@@ -109,6 +109,9 @@ def test_weather_forecasting_notebook(
 
             # Initialize Earth Engine.
             ee_init()
+
+            # Cloud Storage paths.
+            data_path = {repr(data_path)}
             """
         ),
         sections={
@@ -118,9 +121,7 @@ def test_weather_forecasting_notebook(
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
             "# 🧠 Train the model": {},
-            "# ☁️ Train the model in Vertex AI": {
-                "variables": {"data_path": data_path},
-            },
+            "# ☁️ Train the model in Vertex AI": {},
             "# 🔮 Make predictions": {},
         },
     )
