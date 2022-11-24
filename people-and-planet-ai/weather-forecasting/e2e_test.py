@@ -48,7 +48,7 @@ def data_path(bucket_name: str) -> str:
         "python",
         "create_dataset.py",
         f"--data-path={gcs_path}",
-        "--num-dates=1",
+        "--num-dates=2",
         "--num-bins=1",
         "--num-points=1",
     )

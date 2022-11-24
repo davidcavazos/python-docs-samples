@@ -18,7 +18,9 @@ from __future__ import annotations
 
 from glob import glob
 import os
+from typing import Any
 
+import gcsfs
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
@@ -120,13 +122,19 @@ class Model(torch.nn.Module):
 
     @staticmethod
     def load(model_path: str) -> Model:
-        std = torch.load(os.path.join(model_path, "std.pt"))
-        mean = torch.load(os.path.join(model_path, "mean.pt"))
-        state_dict = torch.load(os.path.join(model_path, "state_dict.pt"))
+        std = torch_load(os.path.join(model_path, "std.pt"))
+        mean = torch_load(os.path.join(model_path, "mean.pt"))
+        state_dict = torch_load(os.path.join(model_path, "state_dict.pt"))
         model = Model(Normalization(std, mean))
         model.load_state_dict(state_dict)
         model.eval()
         return model.to(DEVICE)
+
+
+def torch_load(filename: str) -> Any:
+    _open = gcsfs.GCSFileSystem().open if filename.startswith("gs://") else open
+    with _open(filename, "rb") as f:
+        return torch.load(f)
 
 
 def train_test_split(dataset: WeatherDataset, ratio: float) -> list[Subset]:

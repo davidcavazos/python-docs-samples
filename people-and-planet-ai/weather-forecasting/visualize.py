@@ -32,12 +32,14 @@ def render_rgb_images(
     Returns: An uint8 array with shape (width, height, rgb).
     """
     scaled_values = (values - min) / (max - min)
-    rgb_values = np.clip(scaled_values, 0, 1) * 255
+    rgb_values = scaled_values.clip(0, 1) * 255
     return rgb_values.astype(np.uint8)
 
 
-def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray:
-    """Renders a classifications NumPy array with shape (width, height, 1) as an image.
+def render_palette(
+    values: np.ndarray, palette: list[str], min: float = 0.0, max: float = 1.0
+) -> np.ndarray:
+    """Renders a NumPy array with shape (width, height, 1) as an image with a palette.
 
     Args:
         values: An uint8 array with shape (width, height, 1).
@@ -52,21 +54,17 @@ def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray
     red = np.interp(xs, indices, [int(c[0:2], 16) for c in palette])
     green = np.interp(xs, indices, [int(c[2:4], 16) for c in palette])
     blue = np.interp(xs, indices, [int(c[4:6], 16) for c in palette])
-
     color_map = np.array([red, green, blue]).astype(np.uint8).transpose()
-    color_indices = (values / len(palette) * 255).astype(np.uint8)
+
+    scaled_values = (values - min) / (max - min)
+    color_indices = (scaled_values.clip(0, 1) * 255).astype(np.uint8)
     return np.take(color_map, color_indices, axis=0)
 
 
-# GOES 16: https://developers.google.com/earth-engine/datasets/catalog/NOAA_GOES_16_MCMIPF
-# Elevation: https://developers.google.com/earth-engine/datasets/catalog/MERIT_DEM_v1_0_3
-# GPM: https://developers.google.com/earth-engine/datasets/catalog/NASA_GPM_L3_IMERG_V06
-
-
 def render_goes16(patch: np.ndarray) -> np.ndarray:
-    red = patch[1]  # CMI_C02
-    green = patch[2]  # CMI_C03
-    blue = patch[0]  # CMI_C01
+    red = patch[:, :, 1]  # CMI_C02
+    green = patch[:, :, 2]  # CMI_C03
+    blue = patch[:, :, 0]  # CMI_C01
     rgb_patch = np.stack([red, green, blue], axis=-1)
     return render_rgb_images(rgb_patch, max=3000)
 
@@ -84,21 +82,36 @@ def render_gpm(patch: np.ndarray) -> np.ndarray:
         "eb1e00",
         "af0000",
     ]
-    return render_classifications(patch[-1], palette)
+    return render_palette(patch[:, :, 0], palette, max=20)
 
 
-def show_inputs(data: np.ndarray) -> None:
-    patches = data.transpose((1, 0, 2, 3))
-    fig = make_subplots(rows=2, cols=len(patches))
-    for i, patch in enumerate(patches):
-        fig.add_trace(go.Image(z=render_goes16(patch)), row=1, col=i + 1)
-        fig.add_trace(go.Image(z=render_gpm(patch)), row=2, col=i + 1)
+def render_elevation(patch: np.ndarray) -> np.ndarray:
+    palette = [
+        "000000",
+        "478fcd",
+        "86c58e",
+        "afc35e",
+        "8f7131",
+        "b78d4f",
+        "e2b8a6",
+        "ffffff",
+    ]
+    return render_palette(patch[:, :, 0], palette, max=3000)
+
+
+def show_inputs(patch: np.ndarray) -> None:
+    fig = make_subplots(rows=2, cols=4, vertical_spacing=0.05)
+    fig.add_trace(go.Image(z=render_gpm(patch[:, :, 0:1])), row=1, col=1)
+    fig.add_trace(go.Image(z=render_gpm(patch[:, :, 1:2])), row=1, col=2)
+    fig.add_trace(go.Image(z=render_gpm(patch[:, :, 2:3])), row=1, col=3)
+    fig.add_trace(go.Image(z=render_goes16(patch[:, :, 3:19])), row=2, col=1)
+    fig.add_trace(go.Image(z=render_goes16(patch[:, :, 19:35])), row=2, col=2)
+    fig.add_trace(go.Image(z=render_goes16(patch[:, :, 35:51])), row=2, col=3)
     fig.show()
 
 
-def show_labels(data: np.ndarray) -> None:
-    patches = data.transpose((1, 0, 2, 3))
-    fig = make_subplots(rows=1, cols=len(patches))
-    for i, patch in enumerate(patches):
-        fig.add_trace(go.Image(z=render_gpm(patch)), row=1, col=i + 1)
+def show_labels(patch: np.ndarray) -> None:
+    fig = make_subplots(rows=1, cols=2)
+    fig.add_trace(go.Image(z=render_gpm(patch[:, :, 0:1])), row=1, col=1)
+    fig.add_trace(go.Image(z=render_gpm(patch[:, :, 1:2])), row=1, col=2)
     fig.show()
