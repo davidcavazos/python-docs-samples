@@ -36,13 +36,22 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class WeatherDataset(Dataset):
     def __init__(self, data_path: str) -> None:
-        self.files = glob(os.path.join(data_path, "**", "*.npz"), recursive=True)
+        if data_path.startswith("gs://"):
+            self.files = [
+                f"gs://{path}"
+                for path in gcsfs.GCSFileSystem().glob(f"{data_path}/*.npz")
+            ]
+        else:
+            self.files = glob(os.path.join(data_path, "*.npz"))
+
+        if not self.files:
+            raise FileNotFoundError(f"No files found in dataset: {data_path}")
 
     def __len__(self) -> int:
         return len(self.files)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        with open(self.files[idx], "rb") as f:
+        with gcs_open(self.files[idx], "rb") as f:
             npz = np.load(f)
             # Convert to channels-last format since that's what PyTorch expects.
             inputs = torch.from_numpy(npz["inputs"]).transpose(0, -1)
@@ -116,25 +125,30 @@ class Model(torch.nn.Module):
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
-        torch.save(self.normalization.std, os.path.join(model_path, "std.pt"))
-        torch.save(self.normalization.mean, os.path.join(model_path, "mean.pt"))
-        torch.save(self.state_dict(), os.path.join(model_path, "state_dict.pt"))
+        with gcs_open(os.path.join(model_path, "std.pt"), "wb") as f:
+            torch.save(self.normalization.std, f)
+        with gcs_open(os.path.join(model_path, "mean.pt"), "wb") as f:
+            torch.save(self.normalization.mean, f)
+        with gcs_open(os.path.join(model_path, "state_dict.pt"), "wb") as f:
+            torch.save(self.state_dict(), f)
 
     @staticmethod
     def load(model_path: str) -> Model:
-        std = torch_load(os.path.join(model_path, "std.pt"))
-        mean = torch_load(os.path.join(model_path, "mean.pt"))
-        state_dict = torch_load(os.path.join(model_path, "state_dict.pt"))
+        with gcs_open(os.path.join(model_path, "std.pt"), "rb") as f:
+            std = torch.load(f)
+        with gcs_open(os.path.join(model_path, "mean.pt"), "rb") as f:
+            mean = torch.load(f)
+        with gcs_open(os.path.join(model_path, "state_dict.pt"), "rb") as f:
+            state_dict = torch.load(f)
         model = Model(Normalization(std, mean))
         model.load_state_dict(state_dict)
         model.eval()
         return model.to(DEVICE)
 
 
-def torch_load(filename: str) -> any:
+def gcs_open(filename: str, mode: str = "r") -> any:
     _open = gcsfs.GCSFileSystem().open if filename.startswith("gs://") else open
-    with _open(filename, "rb") as f:
-        return torch.load(f)
+    return _open(filename, mode)
 
 
 def train_test_split(dataset: WeatherDataset, ratio: float) -> list[Subset]:

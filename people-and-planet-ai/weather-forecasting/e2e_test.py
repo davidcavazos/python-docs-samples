@@ -43,7 +43,7 @@ def test_name(python_version: str) -> str:
 @pytest.fixture(scope="session")
 def data_path(bucket_name: str) -> str:
     # The Vertex AI training expects data here.
-    gcs_path = f"gs://{bucket_name}/weather/dataset"
+    gcs_path = f"gs://{bucket_name}/weather/data"
     conftest.run_cmd(
         "python",
         "create_dataset.py",
