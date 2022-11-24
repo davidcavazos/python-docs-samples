@@ -110,7 +110,7 @@ def show_inputs(patch: np.ndarray) -> None:
     fig.show()
 
 
-def show_labels(patch: np.ndarray) -> None:
+def show_outputs(patch: np.ndarray) -> None:
     fig = make_subplots(rows=1, cols=2)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 0:1])), row=1, col=1)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 1:2])), row=1, col=2)
