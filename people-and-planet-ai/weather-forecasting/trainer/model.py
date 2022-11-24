@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from glob import glob
 import os
-from typing import Any
+from typing import Any as any
 
 import gcsfs
 import numpy as np
@@ -131,7 +131,7 @@ class Model(torch.nn.Module):
         return model.to(DEVICE)
 
 
-def torch_load(filename: str) -> Any:
+def torch_load(filename: str) -> any:
     _open = gcsfs.GCSFileSystem().open if filename.startswith("gs://") else open
     with _open(filename, "rb") as f:
         return torch.load(f)
