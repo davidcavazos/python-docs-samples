@@ -85,17 +85,16 @@ def test_weather_forecasting_notebook(
     location: str,
     data_path: str,
 ) -> None:
-    def dataflow_dataset_flags() -> str:
-        return " ".join(
-            [
-                '--runner="DataflowRunner"',
-                f"--job_name={unique_name}-dataset",
-                "--num-dates=1",
-                "--num-bins=1",
-                "--num-points=1",
-                "--max-requests=1",
-            ]
-        )
+    dataflow_dataset_flags = " ".join(
+        [
+            '--runner="DataflowRunner"',
+            f"--job_name={unique_name}-dataset",
+            "--num-dates=1",
+            "--num-bins=1",
+            "--num-points=1",
+            "--max-requests=1",
+        ]
+    )
 
     conftest.run_notebook_parallel(
         "README.ipynb",
@@ -116,9 +115,9 @@ def test_weather_forecasting_notebook(
             "# 📚 Understand the data": {},
             "# 🗄 Create the dataset": {},
             "# ☁️ Create the dataset in Dataflow": {
-                "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags()},
+                "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
-            "# 🧠 Train the model": {}
+            "# 🧠 Train the model": {},
             "# ☁️ Train the model in Vertex AI": {
                 "variables": {"data_path": data_path}
             },
