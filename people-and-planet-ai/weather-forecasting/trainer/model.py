@@ -147,8 +147,9 @@ class Model(torch.nn.Module):
 
 
 def gcs_open(filename: str, mode: str = "r") -> any:
-    _open = gcsfs.GCSFileSystem().open if filename.startswith("gs://") else open
-    return _open(filename, mode)
+    if filename.startswith("gs://"):
+        return gcsfs.GCSFileSystem().open(filename, mode)
+    return open(filename, mode)
 
 
 def train_test_split(dataset: WeatherDataset, ratio: float) -> list[Subset]:
