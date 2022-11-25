@@ -43,24 +43,26 @@ def test_name(python_version: str) -> str:
 @pytest.fixture(scope="session")
 def data_path(bucket_name: str) -> str:
     # The Vertex AI training expects data here.
-    gcs_path = f"gs://{bucket_name}/weather/data"
-    conftest.run_cmd(
-        "python",
-        "create_dataset.py",
-        f"--data-path={gcs_path}",
-        "--num-dates=2",
-        "--num-bins=1",
-        "--num-points=1",
-    )
+    # gcs_path = f"gs://{bucket_name}/weather/data"
+    # conftest.run_cmd(
+    #     "python",
+    #     "create_dataset.py",
+    #     f"--data-path={gcs_path}",
+    #     "--num-dates=2",
+    #     "--num-bins=1",
+    #     "--num-points=1",
+    # )
+    gcs_path = f"gs://{bucket_name}/weather/dataset"
     return gcs_path
 
 
-# @pytest.fixture(scope="session")
-# def model_path(bucket_name: str) -> str:
-#     # This is a different path than where Vertex AI saves its model.
-#     gcs_path = f"gs://{bucket_name}/pretrained-model.pt"
-#     conftest.run_cmd("gsutil", "-m", "cp", "-r", "./pretrained-model.pt", gcs_path)
-#     return gcs_path
+@pytest.fixture(scope="session")
+def model_path(bucket_name: str) -> str:
+    # This is a different path than where Vertex AI saves its model.
+    gcs_path = f"gs://{bucket_name}/weather/model"
+    # conftest.run_cmd("gsutil", "-m", "cp", "-r", "./model", gcs_path)
+    return gcs_path
+
 
 # ---------- TESTS ---------- #
 
@@ -84,6 +86,7 @@ def test_weather_forecasting_notebook(
     bucket_name: str,
     location: str,
     data_path: str,
+    model_path: str,
 ) -> None:
     dataflow_dataset_flags = " ".join(
         [
@@ -112,6 +115,7 @@ def test_weather_forecasting_notebook(
 
             # Cloud Storage paths.
             data_path = {repr(data_path)}
+            model_path = {repr(model_path)}
             """
         ),
         sections={
