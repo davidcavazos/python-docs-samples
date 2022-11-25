@@ -43,16 +43,15 @@ def test_name(python_version: str) -> str:
 @pytest.fixture(scope="session")
 def data_path(bucket_name: str) -> str:
     # The Vertex AI training expects data here.
-    # gcs_path = f"gs://{bucket_name}/weather/data"
-    # conftest.run_cmd(
-    #     "python",
-    #     "create_dataset.py",
-    #     f"--data-path={gcs_path}",
-    #     "--num-dates=2",
-    #     "--num-bins=1",
-    #     "--num-points=1",
-    # )
-    gcs_path = f"gs://{bucket_name}/weather/dataset"
+    gcs_path = f"gs://{bucket_name}/weather/data"
+    conftest.run_cmd(
+        "python",
+        "create_dataset.py",
+        f"--data-path={gcs_path}",
+        "--num-dates=2",
+        "--num-bins=1",
+        "--num-points=1",
+    )
     return gcs_path
 
 
@@ -60,7 +59,7 @@ def data_path(bucket_name: str) -> str:
 def model_path(bucket_name: str) -> str:
     # This is a different path than where Vertex AI saves its model.
     gcs_path = f"gs://{bucket_name}/weather/model"
-    # conftest.run_cmd("gsutil", "-m", "cp", "-r", "./model", gcs_path)
+    conftest.run_cmd("gsutil", "-m", "cp", "-r", "./model", gcs_path)
     return gcs_path
 
 
