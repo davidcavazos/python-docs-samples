@@ -111,8 +111,6 @@ def test_weather_forecasting_notebook(
 
             # Initialize Earth Engine.
             ee_init()
-
-            model_path = {repr(model_path)}
             """
         ),
         sections={
