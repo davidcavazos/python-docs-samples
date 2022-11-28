@@ -115,13 +115,13 @@ def test_weather_forecasting_notebook(
             """
         ),
         sections={
-            "# 📚 Understand the data": {},
-            "# 🗄 Create the dataset": {},
-            "# ☁️ Create the dataset in Dataflow": {
-                "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
-            },
+            # "# 📚 Understand the data": {},
+            # "# 🗄 Create the dataset": {},
+            # "# ☁️ Create the dataset in Dataflow": {
+            #     "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
+            # },
             "# 🧠 Train the model": {"variables": {"data_path": data_path}},
-            "# ☁️ Train the model in Vertex AI": {},
-            "# 🔮 Make predictions": {"variables": {"model_path": model_path}},
+            # "# ☁️ Train the model in Vertex AI": {},
+            # "# 🔮 Make predictions": {"variables": {"model_path": model_path}},
         },
     )
