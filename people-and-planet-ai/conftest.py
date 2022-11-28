@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import os
 import platform
 import re
@@ -340,6 +339,8 @@ def run_notebook_parallel(
     replace: dict[str, str] = {},
     skip_shell_commands: bool = False,
 ) -> None:
+    import multiprocessing
+
     args = [
         {
             "ipynb_file": ipynb_file,
