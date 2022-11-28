@@ -16,8 +16,6 @@ from setuptools import setup
 
 # Requirements for Dataflow.
 setup(
-    name="ppai-weather",
-    url="https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/people-and-planet-ai/weather-forecasting",
     packages=["serving"],
     install_requires=[
         "apache-beam[gcp]==2.43.0",
