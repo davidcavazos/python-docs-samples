@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-# import textwrap
+import textwrap
 
 # The conftest contains a bunch of reusable fixtures used all over the place.
 # If we use a fixture not defined here, it must be on the conftest!
@@ -80,48 +80,48 @@ def test_pretrained_model() -> None:
     assert predictions.shape == (1, num_outputs, patch_size, patch_size)
 
 
-# def test_weather_forecasting_notebook(
-#     unique_name: str,
-#     project: str,
-#     bucket_name: str,
-#     location: str,
-#     data_path: str,
-#     model_path: str,
-# ) -> None:
-#     dataflow_dataset_flags = " ".join(
-#         [
-#             '--runner="DataflowRunner"',
-#             f"--job_name={unique_name}-dataset",
-#             "--num-dates=1",
-#             "--num-bins=1",
-#             "--num-points=1",
-#             "--max-requests=1",
-#         ]
-#     )
+def test_weather_forecasting_notebook(
+    unique_name: str,
+    project: str,
+    bucket_name: str,
+    location: str,
+    data_path: str,
+    model_path: str,
+) -> None:
+    # dataflow_dataset_flags = " ".join(
+    #     [
+    #         '--runner="DataflowRunner"',
+    #         f"--job_name={unique_name}-dataset",
+    #         "--num-dates=1",
+    #         "--num-bins=1",
+    #         "--num-points=1",
+    #         "--max-requests=1",
+    #     ]
+    # )
 
-#     conftest.run_notebook_parallel(
-#         "README.ipynb",
-#         prelude=textwrap.dedent(
-#             f"""\
-#             from serving.data import ee_init
+    conftest.run_notebook_parallel(
+        "README.ipynb",
+        prelude=textwrap.dedent(
+            f"""\
+            from serving.data import ee_init
 
-#             # Google Cloud resources.
-#             project = {repr(project)}
-#             bucket = {repr(bucket_name)}
-#             location = {repr(location)}
+            # Google Cloud resources.
+            project = {repr(project)}
+            bucket = {repr(bucket_name)}
+            location = {repr(location)}
 
-#             # Initialize Earth Engine.
-#             ee_init()
-#             """
-#         ),
-#         sections={
-#             "# 📚 Understand the data": {},
-#             "# 🗄 Create the dataset": {},
-#             "# ☁️ Create the dataset in Dataflow": {
-#                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
-#             },
-#             "# 🧠 Train the model": {"variables": {"data_path": data_path}},
-#             "# ☁️ Train the model in Vertex AI": {},
-#             "# 🔮 Make predictions": {"variables": {"model_path": model_path}},
-#         },
-#     )
+            # Initialize Earth Engine.
+            ee_init()
+            """
+        ),
+        sections={
+            "# 📚 Understand the data": {},
+            # "# 🗄 Create the dataset": {},
+            # "# ☁️ Create the dataset in Dataflow": {
+            #     "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
+            # },
+            # "# 🧠 Train the model": {"variables": {"data_path": data_path}},
+            # "# ☁️ Train the model in Vertex AI": {},
+            # "# 🔮 Make predictions": {"variables": {"model_path": model_path}},
+        },
+    )
