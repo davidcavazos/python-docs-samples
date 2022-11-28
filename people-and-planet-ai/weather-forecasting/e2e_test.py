@@ -122,6 +122,6 @@ def test_weather_forecasting_notebook(
             },
             "# 🧠 Train the model": {},
             "# ☁️ Train the model in Vertex AI": {},
-            "# 🔮 Make predictions": {"variables": {"model_path": model_path}},
+            "# 🔮 Make predictions": {},
         },
     )
