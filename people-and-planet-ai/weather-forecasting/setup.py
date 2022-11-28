@@ -20,7 +20,7 @@ setup(
     url="https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/people-and-planet-ai/weather-forecasting",
     packages=["serving"],
     install_requires=[
-        "apache-beam[gcp]==2.42.0",
+        "apache-beam[gcp]==2.43.0",
         "earthengine-api==0.1.332",
     ],
 )
