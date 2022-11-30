@@ -124,9 +124,11 @@ class Model(torch.nn.Module):
 
     @staticmethod
     def load(model_path: str) -> Model:
-        std = torch.load(os.path.join(model_path, "std.pt"))
-        mean = torch.load(os.path.join(model_path, "mean.pt"))
-        state_dict = torch.load(os.path.join(model_path, "state_dict.pt"))
+        std = torch.load(os.path.join(model_path, "std.pt"), map_location=DEVICE)
+        mean = torch.load(os.path.join(model_path, "mean.pt"), map_location=DEVICE)
+        state_dict = torch.load(
+            os.path.join(model_path, "state_dict.pt"), map_location=DEVICE
+        )
         model = Model(Normalization(std, mean))
         model.load_state_dict(state_dict)
         model.eval()
