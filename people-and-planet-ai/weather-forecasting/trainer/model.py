@@ -88,8 +88,8 @@ class Model(torch.nn.Module):
     def __init__(self, normalization: Normalization) -> None:
         super().__init__()
         inputs = 52
-        hidden1 = 64
-        hidden2 = 16
+        hidden1 = 16
+        hidden2 = 4
         outputs = 2
         kernel_size = (5, 5)
 
@@ -107,13 +107,14 @@ class Model(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
-    def predict(self, inputs: np.ndarray, batch: bool = True) -> np.ndarray:
-        inputs_batch = inputs if batch else np.stack([inputs])
-        channels_first_inputs = inputs_batch.swapaxes(1, -1)
+    def predict(self, inputs: np.ndarray) -> np.ndarray:
+        return self.predict_batch(np.stack([inputs]))[0]
+
+    def predict_batch(self, inputs: np.ndarray) -> np.ndarray:
+        channels_first_inputs = inputs.swapaxes(1, -1)
         inputs_pt = torch.from_numpy(channels_first_inputs).to(DEVICE)
         with torch.no_grad():
-            predictions = self(inputs_pt).cpu().numpy().swapaxes(1, -1)
-            return predictions if batch else predictions[0]
+            return self(inputs_pt).cpu().numpy().swapaxes(1, -1)
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
@@ -221,7 +222,7 @@ def run(
         test_loss = test(model, test_loader, loss)
         print(
             f"Epoch [{epoch + 1}/{epochs}] -- "
-            f"loss: {train_loss:.4f} - "
+            f"train_loss: {train_loss:.4f} - "
             f"test_loss: {test_loss:.4f}"
         )
 
