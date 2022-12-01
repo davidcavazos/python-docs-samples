@@ -153,7 +153,6 @@ def data_loader(dataset: Dataset, batch_size: int, shuffle: bool = False) -> Dat
 
 
 def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
-    loss = torch.nn.SmoothL1Loss()
     optimizer = torch.optim.Adam(model.parameters())
 
     total_loss = 0.0
