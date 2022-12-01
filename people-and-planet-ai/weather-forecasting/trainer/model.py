@@ -46,8 +46,8 @@ class WeatherDataset(Dataset):
         with open(self.files[idx], "rb") as f:
             npz = np.load(f)
             # Convert to channels-last format since that's what PyTorch expects.
-            inputs = torch.from_numpy(npz["inputs"]).transpose(0, -1)
-            labels = torch.from_numpy(npz["labels"]).transpose(0, -1)
+            inputs = torch.from_numpy(npz["inputs"]).moveaxis(-1, 0)
+            labels = torch.from_numpy(npz["labels"]).moveaxis(-1, 0)
             return (inputs, labels)
 
 
@@ -106,18 +106,18 @@ class Model(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ys = self.layers(x)
-        y1 = ys[:, 0:1]
-        y2 = ys[:, 1:2]
+        y1 = ys[:, 0]
+        y2 = ys[:, 1]
         return y1, y2
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         return self.predict_batch(np.stack([inputs]))[0]
 
     def predict_batch(self, inputs: np.ndarray) -> np.ndarray:
-        channels_first_inputs = np.moveaxis(inputs, -1, 1)
-        inputs_pt = torch.from_numpy(channels_first_inputs).to(DEVICE)
+        inputs_pt = torch.from_numpy(inputs).moveaxis(-1, 1).to(DEVICE)
         with torch.no_grad():
-            return np.moveaxis(self(inputs_pt).cpu().numpy(), 1, -1)
+            y1, y2 = self(inputs_pt)
+            return torch.stack([y1, y2], -1).cpu().numpy()
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
@@ -166,8 +166,8 @@ def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
 
         # Compute prediction error.
         predictions1, predictions2 = model(inputs_batch)
-        loss1 = loss(predictions1, labels_batch[:, 0:1])
-        loss2 = loss(predictions2, labels_batch[:, 1:2])
+        loss1 = loss(predictions1, labels_batch[:, 0])
+        loss2 = loss(predictions2, labels_batch[:, 1])
         batch_loss = loss1 + loss2
         total_loss += batch_loss.item()
 
@@ -187,8 +187,8 @@ def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
             labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
             predictions1, predictions2 = model(inputs_batch)
-            loss1 = loss(predictions1, labels_batch[:, 0:1])
-            loss2 = loss(predictions2, labels_batch[:, 1:2])
+            loss1 = loss(predictions1, labels_batch[:, 0])
+            loss2 = loss(predictions2, labels_batch[:, 1])
             total_loss += (loss1 + loss2).item()
     return total_loss / len(loader)
 
