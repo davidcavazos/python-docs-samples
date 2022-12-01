@@ -104,17 +104,20 @@ class Model(torch.nn.Module):
             torch.nn.ReLU(),  # precipitation cannot be negative
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.layers(x)
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        ys = self.layers(x)
+        y1 = ys[0:1]
+        y2 = ys[1:2]
+        return y1, y2
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         return self.predict_batch(np.stack([inputs]))[0]
 
     def predict_batch(self, inputs: np.ndarray) -> np.ndarray:
-        channels_first_inputs = inputs.swapaxes(1, -1)
+        channels_first_inputs = np.moveaxis(inputs, -1, 1)
         inputs_pt = torch.from_numpy(channels_first_inputs).to(DEVICE)
         with torch.no_grad():
-            return self(inputs_pt).cpu().numpy().swapaxes(1, -1)
+            return np.moveaxis(self(inputs_pt).cpu().numpy(), 1, -1)
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
@@ -162,8 +165,10 @@ def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
         labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
         # Compute prediction error.
-        predictions = model(inputs_batch)
-        batch_loss = loss(predictions, labels_batch)
+        predictions1, predictions2 = model(inputs_batch)
+        loss1 = loss(predictions1, labels_batch[0:1])
+        loss2 = loss(predictions2, labels_batch[1:2])
+        batch_loss = loss1 + loss2
         total_loss += batch_loss.item()
 
         # Backpropagation.
@@ -181,8 +186,10 @@ def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
             inputs_batch = inputs_batch.to(DEVICE, non_blocking=True)
             labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
-            predictions = model(inputs_batch)
-            total_loss = loss(predictions, labels_batch).item()
+            predictions1, predictions2 = model(inputs_batch)
+            loss1 = loss(predictions1, labels_batch[0:1])
+            loss2 = loss(predictions2, labels_batch[1:2])
+            total_loss += (loss1 + loss2).item()
     return total_loss / len(loader)
 
 
