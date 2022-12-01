@@ -105,9 +105,8 @@ class Model(torch.nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        ys = self.layers(x)
-        y1 = ys[:, 0]
-        y2 = ys[:, 1]
+        y1 = self.layers(x)[:, 0]
+        y2 = self.layers(x)[:, 1]
         return y1, y2
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
