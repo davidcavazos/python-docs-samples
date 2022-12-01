@@ -106,8 +106,8 @@ class Model(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ys = self.layers(x)
-        y1 = ys[0:1]
-        y2 = ys[1:2]
+        y1 = ys[:, 0:1]
+        y2 = ys[:, 1:2]
         return y1, y2
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
@@ -166,8 +166,8 @@ def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
 
         # Compute prediction error.
         predictions1, predictions2 = model(inputs_batch)
-        loss1 = loss(predictions1, labels_batch[0:1])
-        loss2 = loss(predictions2, labels_batch[1:2])
+        loss1 = loss(predictions1, labels_batch[:, 0:1])
+        loss2 = loss(predictions2, labels_batch[:, 1:2])
         batch_loss = loss1 + loss2
         total_loss += batch_loss.item()
 
@@ -187,8 +187,8 @@ def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
             labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
             predictions1, predictions2 = model(inputs_batch)
-            loss1 = loss(predictions1, labels_batch[0:1])
-            loss2 = loss(predictions2, labels_batch[1:2])
+            loss1 = loss(predictions1, labels_batch[:, 0:1])
+            loss2 = loss(predictions2, labels_batch[:, 1:2])
             total_loss += (loss1 + loss2).item()
     return total_loss / len(loader)
 
