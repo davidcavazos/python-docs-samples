@@ -90,7 +90,6 @@ class Model(torch.nn.Module):
         inputs = 52
         hidden1 = 16
         hidden2 = 4
-        outputs = 2
         kernel_size = (5, 5)
 
         self.normalization = normalization
@@ -227,11 +226,11 @@ def run(
     model = Model(normalization).to(DEVICE)
     print(model)
 
-    criterion = torch.nn.SmoothL1Loss()
-    print(f"criterion: {criterion}")
+    loss_fn = torch.nn.MSELoss()
+    print(f"loss_fn: {loss_fn}")
     for epoch in range(epochs):
-        train_loss = train(model, train_loader, criterion)
-        test_loss = test(model, test_loader, criterion)
+        train_loss = train(model, train_loader, loss_fn)
+        test_loss = test(model, test_loader, loss_fn)
         print(
             f"Epoch [{epoch + 1}/{epochs}] -- "
             f"train_loss: {train_loss:.4f} - "
