@@ -94,20 +94,25 @@ class Model(torch.nn.Module):
         kernel_size = (5, 5)
 
         self.normalization = normalization
-        self.layers = torch.nn.Sequential(
+        self.fcn = torch.nn.Sequential(
             self.normalization,
             torch.nn.Conv2d(inputs, hidden1, kernel_size),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(hidden1, hidden2, kernel_size),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(hidden2, outputs, (1, 1)),
+        )
+        self.output1 = torch.nn.Sequential(
+            torch.nn.Conv2d(hidden2, 1, (1, 1)),
+            torch.nn.ReLU(),  # precipitation cannot be negative
+        )
+        self.output2 = torch.nn.Sequential(
+            torch.nn.Conv2d(hidden2, 1, (1, 1)),
             torch.nn.ReLU(),  # precipitation cannot be negative
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        y1 = self.layers(x)[:, 0]
-        y2 = self.layers(x)[:, 1]
-        return y1, y2
+        y = self.fcn(x)
+        return self.output1(y), self.output2(y)
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         return self.predict_batch(np.stack([inputs]))[0]
@@ -154,7 +159,7 @@ def data_loader(dataset: Dataset, batch_size: int, shuffle: bool = False) -> Dat
     )
 
 
-def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
+def train(model: Model, loader: DataLoader, loss_fn: torch.nn.Module) -> float:
     optimizer = torch.optim.Adam(model.parameters())
 
     total_loss = 0.0
@@ -165,19 +170,19 @@ def train(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
 
         # Compute prediction error.
         predictions1, predictions2 = model(inputs_batch)
-        loss1 = loss(predictions1, labels_batch[:, 0])
-        loss2 = loss(predictions2, labels_batch[:, 1])
-        batch_loss = loss1 + loss2
-        total_loss += batch_loss.item()
+        loss1 = loss_fn(predictions1, labels_batch[:, 0:1])
+        loss2 = loss_fn(predictions2, labels_batch[:, 1:2])
+        loss = loss1 + loss2
+        total_loss += loss.item()
 
         # Backpropagation.
         optimizer.zero_grad()
-        batch_loss.backward()
+        loss.backward()
         optimizer.step()
     return total_loss / len(loader)
 
 
-def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
+def test(model: Model, loader: DataLoader, loss_fn: torch.nn.Module) -> float:
     total_loss = 0.0
     model.eval()
     with torch.no_grad():
@@ -186,8 +191,8 @@ def test(model: Model, loader: DataLoader, loss: torch.nn.Module) -> float:
             labels_batch = labels_batch.to(DEVICE, non_blocking=True)
 
             predictions1, predictions2 = model(inputs_batch)
-            loss1 = loss(predictions1, labels_batch[:, 0])
-            loss2 = loss(predictions2, labels_batch[:, 1])
+            loss1 = loss_fn(predictions1, labels_batch[:, 0:1])
+            loss2 = loss_fn(predictions2, labels_batch[:, 1:2])
             total_loss += (loss1 + loss2).item()
     return total_loss / len(loader)
 
@@ -222,11 +227,11 @@ def run(
     model = Model(normalization).to(DEVICE)
     print(model)
 
-    loss = torch.nn.SmoothL1Loss()
-    print(f"loss: {loss}")
+    criterion = torch.nn.SmoothL1Loss()
+    print(f"criterion: {criterion}")
     for epoch in range(epochs):
-        train_loss = train(model, train_loader, loss)
-        test_loss = test(model, test_loader, loss)
+        train_loss = train(model, train_loader, criterion)
+        test_loss = test(model, test_loader, criterion)
         print(
             f"Epoch [{epoch + 1}/{epochs}] -- "
             f"train_loss: {train_loss:.4f} - "
