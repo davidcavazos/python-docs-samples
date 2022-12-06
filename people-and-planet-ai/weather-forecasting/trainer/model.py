@@ -88,9 +88,9 @@ class Model(torch.nn.Module):
     def __init__(self, normalization: Normalization) -> None:
         super().__init__()
         inputs = 52
-        hidden1 = 16
-        hidden2 = 4
-        kernel_size = (5, 5)
+        hidden1 = 64
+        hidden2 = 128
+        kernel_size = (3, 3)
 
         self.normalization = normalization
         self.fcn = torch.nn.Sequential(
@@ -226,7 +226,7 @@ def run(
     model = Model(normalization).to(DEVICE)
     print(model)
 
-    loss_fn = torch.nn.MSELoss()
+    loss_fn = torch.nn.SmoothL1Loss()
     print(f"loss_fn: {loss_fn}")
     for epoch in range(epochs):
         train_loss = train(model, train_loader, loss_fn)
