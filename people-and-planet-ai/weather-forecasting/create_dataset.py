@@ -39,7 +39,7 @@ NUM_POINTS = 1
 MAX_REQUESTS = 20  # default EE request quota
 
 # Constants.
-PATCH_SIZE = 128
+PATCH_SIZE = 5
 START_DATE = datetime(2017, 7, 10)
 END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
