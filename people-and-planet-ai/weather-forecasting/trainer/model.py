@@ -24,8 +24,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 # Default values.
-EPOCHS = 2
-BATCH_SIZE = 256
+EPOCHS = 100
+BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
 # Constants.
@@ -34,8 +34,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class WeatherDataset(Dataset):
     def __init__(self, data_path: str) -> None:
+        self.cache = {}
         self.files = glob(os.path.join(data_path, "*.npz"))
-
         if not self.files:
             raise FileNotFoundError(f"No files found in dataset: {data_path}")
 
@@ -43,11 +43,15 @@ class WeatherDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        if idx in self.cache:
+            return self.cache[idx]
+
         with open(self.files[idx], "rb") as f:
             npz = np.load(f)
             # Convert to channels-last format since that's what PyTorch expects.
             inputs = torch.from_numpy(npz["inputs"]).moveaxis(-1, 0)
             labels = torch.from_numpy(npz["labels"]).moveaxis(-1, 0)
+            self.cache[idx] = (inputs, labels)
             return (inputs, labels)
 
 
