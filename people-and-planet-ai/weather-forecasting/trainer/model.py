@@ -120,11 +120,11 @@ class Model(torch.nn.Module):
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         return self.predict_batch(np.stack([inputs]))[0]
 
-    def predict_batch(self, inputs: np.ndarray) -> np.ndarray:
-        inputs_pt = torch.from_numpy(inputs).moveaxis(-1, 1).to(DEVICE)
+    def predict_batch(self, inputs_batch: np.ndarray) -> np.ndarray:
+        inputs_pt = torch.from_numpy(inputs_batch).moveaxis(-1, 1).to(DEVICE)
         with torch.no_grad():
             y1, y2 = self(inputs_pt)
-            return torch.stack([y1, y2], -1).cpu().numpy()
+            return torch.cat([y1, y2], dim=1).moveaxis(1, -1).cpu().numpy()
 
     def save(self, model_path: str) -> None:
         os.makedirs(model_path, exist_ok=True)
@@ -158,7 +158,6 @@ def data_loader(dataset: Dataset, batch_size: int, shuffle: bool = False) -> Dat
         num_workers=os.cpu_count() or 0,
         shuffle=shuffle,
         pin_memory=True,
-        persistent_workers=True,
     )
 
 
