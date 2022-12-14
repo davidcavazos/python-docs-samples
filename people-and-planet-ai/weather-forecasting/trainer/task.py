@@ -31,33 +31,14 @@ EPOCHS = 100
 BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
-# https://developers.google.com/machine-learning/data-prep/transform/normalization#z-score
-class Normalization(torch.nn.Module):
-    """Preprocessing normalization layer with z-score."""
-
-    def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
-        super().__init__()
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.mean = torch.from_numpy(mean).to(device)
-        self.std = torch.from_numpy(std).to(device)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.mean) / self.std
-
-    @staticmethod
-    def adapt(dataset: Dataset) -> Normalization:
-        data = np.array(dataset, np.float32)
-        mean = data.mean(axis=(0, 1, 2))[None, None, None, :]
-        std = data.std(axis=(0, 1, 2))[None, None, None, :]
-        return Normalization(mean, std)
-
-
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
     model_type = "weather"
 
     def __init__(
         self,
+        mean: list = [],
+        std: list = [],
         num_inputs: int = 52,
         num_hidden1: int = 64,
         num_hidden2: int = 128,
@@ -65,6 +46,8 @@ class WeatherConfig(PretrainedConfig):
         kernel_size: tuple[int, int] = (3, 3),
         **kwargs,
     ) -> None:
+        self.mean = mean
+        self.std = std
         self.num_inputs = num_inputs
         self.num_hidden1 = num_hidden1
         self.num_hidden2 = num_hidden2
@@ -77,11 +60,11 @@ class WeatherConfig(PretrainedConfig):
 class WeatherModel(PreTrainedModel):
     config_class = WeatherConfig
 
-    def __init__(self, config: WeatherConfig, normalization: Normalization) -> None:
+    def __init__(self, config: WeatherConfig) -> None:
         super().__init__(config)
         self.loss = torch.nn.SmoothL1Loss()
         self.model = torch.nn.Sequential(
-            normalization,
+            Normalization(config.mean, config.std),
             MoveDim(-1, 1),  # convert to channels-first
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
@@ -89,9 +72,9 @@ class WeatherModel(PreTrainedModel):
                 config.num_hidden1, config.num_hidden2, config.kernel_size
             ),
             torch.nn.ReLU(),
-            torch.nn.Conv2d(config.num_hidden2, config.num_outputs, (1, 1)),
-            torch.nn.ReLU(),  # precipitation cannot be negative
             MoveDim(1, -1),  # convert to channels-last
+            torch.nn.Linear(config.num_hidden2, config.num_outputs),
+            torch.nn.ReLU(),  # precipitation cannot be negative
         )
 
     def forward(
@@ -105,14 +88,26 @@ class WeatherModel(PreTrainedModel):
         loss = self.loss(outputs, labels)
         return {"loss": loss, "logits": outputs}
 
-    def predict(self, inputs: np.ndarray) -> np.ndarray:
-        return self.predict_batch(np.stack([inputs]))[0]
+    @staticmethod
+    def create(inputs: Dataset, **kwargs) -> WeatherModel:
+        data = np.array(inputs, np.float32)
+        mean = data.mean(axis=(0, 1, 2))[None, None, None, :]
+        std = data.std(axis=(0, 1, 2))[None, None, None, :]
+        config = WeatherConfig(mean.tolist(), std.tolist(), **kwargs)
+        return WeatherModel(config)
 
-    def predict_batch(self, inputs_batch: np.ndarray) -> np.ndarray:
-        inputs_pt = torch.from_numpy(inputs_batch).moveaxis(-1, 1)
-        with torch.no_grad():
-            y1, y2 = self(inputs_pt)
-            return torch.cat([y1, y2], dim=1).moveaxis(1, -1).cpu().numpy()
+
+class Normalization(torch.nn.Module):
+    """Preprocessing normalization layer with z-score."""
+
+    def __init__(self, mean: list, std: list) -> None:
+        super().__init__()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.mean = torch.as_tensor(mean).to(device)
+        self.std = torch.as_tensor(std).to(device)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return (x - self.mean) / self.std
 
 
 class MoveDim(torch.nn.Module):
@@ -178,13 +173,10 @@ def run(
     dataset = create_dataset(data_path, train_test_ratio)
     print(dataset)
 
-    normalization = Normalization.adapt(dataset["train"]["inputs"])
-    print(f"mean: {normalization.mean.shape}")
-    print(f"std:  {normalization.std.shape}")
-
-    config = WeatherConfig()
-    print(config)
-    model = WeatherModel(config, normalization)
+    model = WeatherModel.create(dataset["train"]["inputs"])
+    print(model.config)
+    print(f"mean: {np.array(model.config.mean).shape}")
+    print(f"std:  {np.array(model.config.std).shape}")
     print(model)
 
     train(model, dataset, model_path, epochs, batch_size)
