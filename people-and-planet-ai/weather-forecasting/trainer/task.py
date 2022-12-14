@@ -31,9 +31,6 @@ EPOCHS = 100
 BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
-# Constants.
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
 
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
@@ -92,7 +89,7 @@ class WeatherModel(PreTrainedModel):
         return self.predict_batch(np.stack([inputs]))[0]
 
     def predict_batch(self, inputs_batch: np.ndarray) -> np.ndarray:
-        inputs_pt = torch.from_numpy(inputs_batch).moveaxis(-1, 1).to(DEVICE)
+        inputs_pt = torch.from_numpy(inputs_batch).moveaxis(-1, 1)
         with torch.no_grad():
             y1, y2 = self(inputs_pt)
             return torch.cat([y1, y2], dim=1).moveaxis(1, -1).cpu().numpy()
@@ -104,8 +101,8 @@ class Normalization(torch.nn.Module):
 
     def __init__(self, std: np.ndarray, mean: np.ndarray) -> None:
         super().__init__()
-        self.std = torch.from_numpy(std).float().to(DEVICE, non_blocking=True)
-        self.mean = torch.from_numpy(mean).float().to(DEVICE, non_blocking=True)
+        self.std = torch.from_numpy(std).float()
+        self.mean = torch.from_numpy(mean).float()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std
@@ -147,7 +144,8 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
                 npz = np.load(f)
                 yield {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    dataset = Dataset.from_generator(data_iterator).with_format("numpy")
+    # dataset = Dataset.from_generator(data_iterator).with_format("numpy")
+    dataset = Dataset.from_list(list(data_iterator())).with_format("numpy")
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
 
@@ -188,7 +186,6 @@ def run(
     print(f"epochs: {epochs}")
     print(f"batch_size: {batch_size}")
     print(f"train_test_ratio: {train_test_ratio}")
-    print(f"DEVICE: {DEVICE}")
     print("-" * 40)
 
     dataset = create_dataset(data_path, train_test_ratio)
@@ -200,7 +197,7 @@ def run(
 
     config = WeatherConfig()
     print(config)
-    model = WeatherModel(config, normalization).to(DEVICE)
+    model = WeatherModel(config, normalization)
 
     train(model, dataset, model_path, epochs, batch_size)
 
