@@ -162,6 +162,7 @@ def train(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         evaluation_strategy="epoch",
+        dataloader_num_workers=os.cpu_count() or 0,
     )
     trainer = Trainer(
         model,
