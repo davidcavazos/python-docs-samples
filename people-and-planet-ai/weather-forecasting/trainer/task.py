@@ -18,18 +18,20 @@ from __future__ import annotations
 
 from glob import glob
 import os
-from typing import Iterable, Optional
+from typing import Any as AnyType, Iterable, Optional
 
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
 import numpy as np
 import torch
-from transformers import PreTrainedModel, PretrainedConfig, Trainer, TrainingArguments
+from transformers import PretrainedConfig, PreTrainedModel, Trainer, TrainingArguments
+
 
 # Default values.
 EPOCHS = 100
 BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
+
 
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
@@ -44,7 +46,7 @@ class WeatherConfig(PretrainedConfig):
         num_hidden2: int = 128,
         num_outputs: int = 2,
         kernel_size: tuple[int, int] = (3, 3),
-        **kwargs,
+        **kwargs: AnyType,
     ) -> None:
         self.mean = mean
         self.std = std
@@ -89,7 +91,7 @@ class WeatherModel(PreTrainedModel):
         return {"loss": loss, "logits": outputs}
 
     @staticmethod
-    def create(inputs: Dataset, **kwargs) -> WeatherModel:
+    def create(inputs: Dataset, **kwargs: AnyType) -> WeatherModel:
         data = np.array(inputs, np.float32)
         mean = data.mean(axis=(0, 1, 2))[None, None, None, :]
         std = data.std(axis=(0, 1, 2))[None, None, None, :]
