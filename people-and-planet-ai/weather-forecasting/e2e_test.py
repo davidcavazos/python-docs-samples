@@ -28,7 +28,7 @@ import pytest
 import torch
 
 from serving import data
-from trainer.model import Model
+from trainer.task import Model
 
 
 # ---------- FIXTURES ---------- #
@@ -121,7 +121,7 @@ def test_weather_forecasting_notebook(
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
             "# 🧠 Train the model": {},
-            "# ☁️ Train the model in Vertex AI": {"variables": {"epochs": 10}},
+            "# ☁️ Train the model in Vertex AI": {"variables": {"epochs": 2}},
             "# 🔮 Make predictions": {},
         },
     )
