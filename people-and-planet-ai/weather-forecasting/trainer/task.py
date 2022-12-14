@@ -37,8 +37,9 @@ class Normalization(torch.nn.Module):
 
     def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
         super().__init__()
-        self.mean = torch.from_numpy(mean)
-        self.std = torch.from_numpy(std)
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.mean = torch.from_numpy(mean).to(device)
+        self.std = torch.from_numpy(std).to(device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std
