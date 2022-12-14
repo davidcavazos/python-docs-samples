@@ -64,9 +64,11 @@ class WeatherModel(PreTrainedModel):
 
     def __init__(self, config: WeatherConfig) -> None:
         super().__init__(config)
+        self.register_buffer("mean", torch.as_tensor(config.mean))
+        self.register_buffer("std", torch.as_tensor(config.std))
         self.loss = torch.nn.SmoothL1Loss()
         self.model = torch.nn.Sequential(
-            Normalization(config.mean, config.std),
+            Normalization(self.mean, self.std),
             MoveDim(-1, 1),  # convert to channels-first
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
@@ -102,11 +104,10 @@ class WeatherModel(PreTrainedModel):
 class Normalization(torch.nn.Module):
     """Preprocessing normalization layer with z-score."""
 
-    def __init__(self, mean: list, std: list) -> None:
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         super().__init__()
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.mean = torch.as_tensor(mean).to(device)
-        self.std = torch.as_tensor(std).to(device)
+        self.mean = mean
+        self.std = std
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std
