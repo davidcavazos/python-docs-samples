@@ -82,7 +82,7 @@ class WeatherModel(PreTrainedModel):
         self.loss = torch.nn.SmoothL1Loss()
         self.model = torch.nn.Sequential(
             normalization,
-            MoveAxis(-1, 1),  # convert to channels-first
+            MoveDim(-1, 1),  # convert to channels-first
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(
@@ -91,7 +91,7 @@ class WeatherModel(PreTrainedModel):
             torch.nn.ReLU(),
             torch.nn.Conv2d(config.num_hidden2, config.num_outputs, (1, 1)),
             torch.nn.ReLU(),  # precipitation cannot be negative
-            MoveAxis(1, -1),  # convert to channels-last
+            MoveDim(1, -1),  # convert to channels-last
         )
 
     def forward(
@@ -115,7 +115,7 @@ class WeatherModel(PreTrainedModel):
             return torch.cat([y1, y2], dim=1).moveaxis(1, -1).cpu().numpy()
 
 
-class MoveAxis(torch.nn.Module):
+class MoveDim(torch.nn.Module):
     def __init__(self, src: int, dest: int) -> None:
         super().__init__()
         self.src = src
