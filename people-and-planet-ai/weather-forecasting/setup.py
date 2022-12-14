@@ -19,6 +19,6 @@ setup(
     packages=["serving"],
     install_requires=[
         "apache-beam[gcp]==2.43.0",
-        "earthengine-api==0.1.334",
+        "earthengine-api==0.1.335",
     ],
 )
