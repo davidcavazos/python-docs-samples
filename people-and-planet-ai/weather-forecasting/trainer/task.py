@@ -31,6 +31,25 @@ EPOCHS = 100
 BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
+# https://developers.google.com/machine-learning/data-prep/transform/normalization#z-score
+class Normalization(torch.nn.Module):
+    """Preprocessing normalization layer with z-score."""
+
+    def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
+        super().__init__()
+        self.mean = torch.from_numpy(mean)
+        self.std = torch.from_numpy(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return (x - self.mean) / self.std
+
+    @staticmethod
+    def adapt(dataset: Dataset) -> Normalization:
+        data = np.array(dataset, np.float32)
+        mean = data.mean(axis=(0, 1, 2))[None, None, None, :]
+        std = data.std(axis=(0, 1, 2))[None, None, None, :]
+        return Normalization(mean, std)
+
 
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
@@ -95,38 +114,6 @@ class WeatherModel(PreTrainedModel):
             return torch.cat([y1, y2], dim=1).moveaxis(1, -1).cpu().numpy()
 
 
-# https://developers.google.com/machine-learning/data-prep/transform/normalization#z-score
-class Normalization(torch.nn.Module):
-    """Preprocessing normalization layer with z-score."""
-
-    def __init__(self, std: np.ndarray, mean: np.ndarray) -> None:
-        super().__init__()
-        self.std = torch.from_numpy(std).float()
-        self.mean = torch.from_numpy(mean).float()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.mean) / self.std
-
-    @staticmethod
-    def adapt(dataset: Dataset, axis: int = -1) -> Normalization:
-        axis = axis if axis >= 0 else dataset[0].ndim + axis
-        dims = tuple(i for i in range(dataset[0].ndim) if i != axis)
-        shape = [1 if i != axis else x for (i, x) in enumerate(dataset[0].shape)]
-
-        size = len(dataset) * np.prod(
-            [x for (i, x) in enumerate(dataset[0].shape) if i != axis]
-        )
-        sum = np.zeros(shape)
-        sum_sq = np.zeros(shape)
-        for data in dataset:
-            sum += data.sum(dims).reshape(shape)
-            sum_sq += (data**2).sum(dims).reshape(shape)
-        mean = sum / size
-        variance = sum_sq / size - mean**2
-        std = np.sqrt(np.abs(variance))
-        return Normalization(np.stack([std]), np.stack([mean]))
-
-
 class MoveAxis(torch.nn.Module):
     def __init__(self, src: int, dest: int) -> None:
         super().__init__()
@@ -144,8 +131,7 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
                 npz = np.load(f)
                 yield {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    # dataset = Dataset.from_generator(data_iterator).with_format("numpy")
-    dataset = Dataset.from_list(list(data_iterator())).with_format("numpy")
+    dataset = Dataset.from_generator(data_iterator, keep_in_memory=True)
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
 
@@ -162,7 +148,6 @@ def train(
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         evaluation_strategy="epoch",
-        dataloader_num_workers=os.cpu_count() or 0,
     )
     trainer = Trainer(
         model,
@@ -199,6 +184,7 @@ def run(
     config = WeatherConfig()
     print(config)
     model = WeatherModel(config, normalization)
+    print(model)
 
     train(model, dataset, model_path, epochs, batch_size)
 
