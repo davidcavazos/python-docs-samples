@@ -22,10 +22,7 @@ import textwrap
 #   https://docs.pytest.org/en/latest/explanation/fixtures.html
 import conftest  # python-docs-samples/people-and-planet-ai/conftest.py
 
-import numpy as np
 import pytest
-
-import torch
 
 from serving import data
 from trainer.task import WeatherModel
