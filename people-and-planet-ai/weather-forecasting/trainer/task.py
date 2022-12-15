@@ -64,11 +64,9 @@ class WeatherModel(PreTrainedModel):
 
     def __init__(self, config: WeatherConfig) -> None:
         super().__init__(config)
-        self.register_buffer("mean", torch.as_tensor(config.mean))
-        self.register_buffer("std", torch.as_tensor(config.std))
         self.loss = torch.nn.SmoothL1Loss()
         self.model = torch.nn.Sequential(
-            Normalization(self.mean, self.std),
+            Normalization(config.mean, config.std),
             MoveDim(-1, 1),  # convert to channels-first
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
@@ -100,14 +98,25 @@ class WeatherModel(PreTrainedModel):
         config = WeatherConfig(mean.tolist(), std.tolist(), **kwargs)
         return WeatherModel(config)
 
+    def predict(self, inputs: AnyType) -> np.ndarray:
+        return self.predict_batch(torch.as_tensor([inputs]))[0]
+
+    def predict_batch(self, inputs_batch: AnyType) -> np.ndarray:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = self.to(device)
+        with torch.no_grad():
+            outputs = model(torch.as_tensor(inputs_batch, device=device))
+            predictions = outputs["logits"]
+            return predictions.cpu().numpy()
+
 
 class Normalization(torch.nn.Module):
     """Preprocessing normalization layer with z-score."""
 
-    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+    def __init__(self, mean: AnyType, std: AnyType) -> None:
         super().__init__()
-        self.mean = mean
-        self.std = std
+        self.mean = torch.nn.Parameter(torch.as_tensor(mean))
+        self.std = torch.nn.Parameter(torch.as_tensor(std))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return (x - self.mean) / self.std

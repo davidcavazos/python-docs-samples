@@ -28,7 +28,7 @@ import pytest
 import torch
 
 from serving import data
-from trainer.task import Model
+from trainer.task import WeatherModel
 
 
 # ---------- FIXTURES ---------- #
@@ -70,13 +70,12 @@ def test_pretrained_model() -> None:
     data.ee_init()
     patch_size = 16
     date = datetime(2019, 9, 3, 18)
-    patch = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
-    inputs = np.stack([np.moveaxis(patch, -1, 0)])
-    assert inputs.shape == (1, 52, patch_size, patch_size)
-    model = Model.load("model")
-    y1, y2 = model(torch.from_numpy(inputs))
-    assert y1.shape == (1, 1, patch_size, patch_size)
-    assert y2.shape == (1, 1, patch_size, patch_size)
+    inputs = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
+
+    model = WeatherModel.from_pretrained("model")
+    assert inputs.shape == (patch_size, patch_size, 52)
+    predictions = model.predict(inputs)
+    assert predictions.shape == (patch_size, patch_size, 2)
 
 
 def test_weather_forecasting_notebook(
