@@ -139,7 +139,7 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
                 npz = np.load(f)
                 yield {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    dataset = Dataset.from_generator(data_iterator)
+    dataset = Dataset.from_generator(data_iterator, keep_in_memory=True)
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
 
