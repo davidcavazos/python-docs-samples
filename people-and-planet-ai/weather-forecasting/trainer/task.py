@@ -163,7 +163,7 @@ def train(
         train_dataset=dataset["train"],
         eval_dataset=dataset["test"],
     )
-    trainer.train()
+    trainer.train(resume_from_checkpoint=True)
     trainer.save_model(model_path)
 
 
