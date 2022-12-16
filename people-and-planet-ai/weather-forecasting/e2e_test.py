@@ -47,8 +47,8 @@ def data_path(bucket_name: str) -> str:
         "--num-bins=1",
         "--num-points=1",
     )
-    gcs_path = f"gs://{bucket_name}/weather/data"
-    conftest.run_cmd("gsutil", "-m", "cp", "-r", "./data", gcs_path)
+    gcs_path = f"gs://{bucket_name}/weather/data/"
+    conftest.run_cmd("gsutil", "-m", "cp", "./data/*.npz", gcs_path)
     return gcs_path
 
 
