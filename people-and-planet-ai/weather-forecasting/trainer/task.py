@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from glob import glob
 import os
-from typing import Any as AnyType, Iterable, Optional
+from typing import Any as AnyType, Optional
 
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
