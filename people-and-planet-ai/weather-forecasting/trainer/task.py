@@ -133,7 +133,7 @@ class MoveDim(torch.nn.Module):
 
 
 def create_dataset(
-    data_path: str, train_test_ratio: float, num_procs: int
+    data_path: str, train_test_ratio: float, num_procs: int = os.cpu_count() or 1
 ) -> DatasetDict:
     def read_data_file(item: dict[str, str]) -> dict[str, np.ndarray]:
         with open(item["filename"], "rb") as f:
@@ -149,36 +149,13 @@ def create_dataset(
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
 
-def train(
-    model: PreTrainedModel,
-    dataset: DatasetDict,
-    model_path: str,
-    epochs: int = EPOCHS,
-    batch_size: int = BATCH_SIZE,
-) -> None:
-    training_args = TrainingArguments(
-        output_dir=os.path.join(model_path, "outputs"),
-        num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        evaluation_strategy="epoch",
-    )
-    trainer = Trainer(
-        model,
-        training_args,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
-    )
-    trainer.train()
-    trainer.save_model(model_path)
-
-
 def run(
     data_path: str,
     model_path: str,
     epochs: int = EPOCHS,
     batch_size: int = BATCH_SIZE,
     train_test_ratio: float = TRAIN_TEST_RATIO,
+    from_checkpoint: bool = False,
     num_read_procs: int = os.cpu_count() or 1,
 ) -> None:
 
@@ -195,11 +172,23 @@ def run(
 
     model = WeatherModel.create(dataset["train"]["inputs"])
     print(model.config)
-    print(f"mean: {np.array(model.config.mean).shape}")
-    print(f"std:  {np.array(model.config.std).shape}")
     print(model)
 
-    train(model, dataset, model_path, epochs, batch_size)
+    training_args = TrainingArguments(
+        output_dir=os.path.join(model_path, "outputs"),
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        evaluation_strategy="epoch",
+    )
+    trainer = Trainer(
+        model,
+        training_args,
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["test"],
+    )
+    trainer.train(resume_from_checkpoint=from_checkpoint)
+    trainer.save_model(model_path)
 
 
 if __name__ == "__main__":
@@ -211,6 +200,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--train-test-ratio", type=float, default=TRAIN_TEST_RATIO)
+    parser.add_argument("--from-checkpoint", action="store_true")
     parser.add_argument("--num-read-procs", type=int, default=os.cpu_count() or 1)
     args = parser.parse_args()
 
