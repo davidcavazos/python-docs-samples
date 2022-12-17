@@ -32,6 +32,10 @@ EPOCHS = 100
 BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
+# Constants.
+GCS_READ_PROCS = 32  # number of processes to read data from Cloud Storage
+LOCAL_READ_PROCS = os.cpu_count() or 8  # number of processes to read data locally
+
 
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
@@ -132,14 +136,13 @@ class MoveDim(torch.nn.Module):
         return x.moveaxis(self.src, self.dest)
 
 
-def create_dataset(
-    data_path: str, train_test_ratio: float, num_procs: int = os.cpu_count() or 1
-) -> DatasetDict:
+def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
     def read_data_file(item: dict[str, str]) -> dict[str, np.ndarray]:
         with open(item["filename"], "rb") as f:
             npz = np.load(f)
             return {"inputs": npz["inputs"], "labels": npz["labels"]}
 
+    num_procs = GCS_READ_PROCS if data_path.startswith("/gcs/") else LOCAL_READ_PROCS
     files = glob(os.path.join(data_path, "*.npz"))
     dataset = Dataset.from_dict({"filename": files}).map(
         read_data_file,
@@ -156,7 +159,6 @@ def run(
     batch_size: int = BATCH_SIZE,
     train_test_ratio: float = TRAIN_TEST_RATIO,
     from_checkpoint: bool = False,
-    num_read_procs: int = os.cpu_count() or 1,
 ) -> None:
 
     print(f"data_path: {data_path}")
@@ -164,10 +166,9 @@ def run(
     print(f"epochs: {epochs}")
     print(f"batch_size: {batch_size}")
     print(f"train_test_ratio: {train_test_ratio}")
-    print(f"num_read_procs: {num_read_procs}")
     print("-" * 40)
 
-    dataset = create_dataset(data_path, train_test_ratio, num_read_procs)
+    dataset = create_dataset(data_path, train_test_ratio)
     print(dataset)
 
     model = WeatherModel.create(dataset["train"]["inputs"])
@@ -201,7 +202,6 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--train-test-ratio", type=float, default=TRAIN_TEST_RATIO)
     parser.add_argument("--from-checkpoint", action="store_true")
-    parser.add_argument("--num-read-procs", type=int, default=os.cpu_count() or 1)
     args = parser.parse_args()
 
     run(**vars(args))
