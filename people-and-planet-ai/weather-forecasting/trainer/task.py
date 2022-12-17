@@ -33,8 +33,7 @@ BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
 # Constants.
-GCS_READ_PROCS = 32  # number of processes to read data from Cloud Storage
-LOCAL_READ_PROCS = os.cpu_count() or 8  # number of processes to read data locally
+NUM_READ_PROCESSES = 16  # number of processes to read data files in parallel
 
 
 # https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
@@ -142,11 +141,10 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             npz = np.load(f)
             return {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    num_procs = GCS_READ_PROCS if data_path.startswith("/gcs/") else LOCAL_READ_PROCS
     files = glob(os.path.join(data_path, "*.npz"))
     dataset = Dataset.from_dict({"filename": files}).map(
         read_data_file,
-        num_proc=num_procs,
+        num_proc=NUM_READ_PROCESSES,
         remove_columns=["filename"],
     )
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
