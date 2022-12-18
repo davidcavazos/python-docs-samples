@@ -33,7 +33,7 @@ import requests
 from serving import data
 
 # Default values.
-NUM_DATES = 50
+DATASET_SIZE = 1000
 NUM_BINS = 10
 NUM_POINTS = 1
 MAX_REQUESTS = 20  # default EE request quota
@@ -112,18 +112,19 @@ def try_get_example(date: datetime, point: tuple) -> Iterable[tuple]:
         logging.exception(e)
 
 
-def write_npz(inputs: np.ndarray, labels: np.ndarray, data_path: str = "data/") -> str:
-    """Writes an (inputs, labels) pair into a compressed NumPy file.
+def write_npz(batch: list[tuple[np.ndarray, np.ndarray]], data_path: str) -> str:
+    """Writes an (inputs, labels) batch into a compressed NumPy file.
 
     Args:
-        inputs: Input data as a NumPy array.
-        labels: Label data as a NumPy array.
+        batch: Batch of (inputs, labels) pairs of NumPy arrays.
         data_path: Directory path to save files to.
 
     Returns: The filename of the data file.
     """
     filename = FileSystems.join(data_path, f"{uuid.uuid4()}.npz")
     with FileSystems.create(filename) as f:
+        inputs = [x for (x, _) in batch]
+        labels = [y for (_, y) in batch]
         np.savez_compressed(f, inputs=inputs, labels=labels)
     logging.info(filename)
     return filename
@@ -131,7 +132,7 @@ def write_npz(inputs: np.ndarray, labels: np.ndarray, data_path: str = "data/") 
 
 def run(
     data_path: str,
-    num_dates: int = NUM_DATES,
+    size: int = DATASET_SIZE,
     num_bins: int = NUM_BINS,
     num_points: int = NUM_POINTS,
     max_requests: int = MAX_REQUESTS,
@@ -145,12 +146,13 @@ def run(
 
     Args:
         data_path: Directory path to save the TFRecord files.
-        num_dates: Number of dates to get training points from.
+        size: Total number of examples to create.
         num_bins: Number of bins for stratified sampling.
         num_points: Number of points per bin to pick.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
+    num_dates = int(size / num_bins / num_points)
     random_dates = [
         START_DATE + (END_DATE - START_DATE) * random.random() for _ in range(num_dates)
     ]
@@ -169,7 +171,8 @@ def run(
             | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins, num_points)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
-            | "📚 Write NPZ files" >> beam.MapTuple(write_npz, data_path)
+            | "🗂️ Batch examples" >> beam.BatchElements()
+            | "📚 Write NPZ files" >> beam.Map(write_npz, data_path)
         )
 
 
@@ -180,7 +183,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
-    parser.add_argument("--num-dates", type=int, default=NUM_DATES)
+    parser.add_argument("--size", type=int, default=DATASET_SIZE)
     parser.add_argument("--num-bins", type=int, default=NUM_BINS)
     parser.add_argument("--num-points", type=int, default=NUM_POINTS)
     parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
@@ -188,7 +191,7 @@ if __name__ == "__main__":
 
     run(
         data_path=args.data_path,
-        num_dates=args.num_dates,
+        size=args.size,
         num_bins=args.num_bins,
         num_points=args.num_points,
         max_requests=args.max_requests,
