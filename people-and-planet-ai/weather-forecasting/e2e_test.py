@@ -116,7 +116,7 @@ def test_weather_forecasting_notebook(
             "# ☁️ Create the dataset in Dataflow": {
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
-            "# 🧠 Train the model": {"variables": {"data_path": data_path}},
+            "# 🧠 Train the model": {},
             "# ☁️ Train the model in Vertex AI": {"variables": {"epochs": 2}},
             "# 🔮 Make predictions": {},
         },
