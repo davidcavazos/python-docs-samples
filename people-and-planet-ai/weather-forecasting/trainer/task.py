@@ -141,7 +141,7 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             npz = np.load(f)
             return {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    def flatten_batches(data: dict[str, list]) -> dict[str, list]:
+    def flatten(data: dict[str, list]) -> dict[str, list]:
         return {
             "inputs": [x for batch in data["inputs"] for x in batch],
             "labels": [x for batch in data["labels"] for x in batch],
@@ -155,7 +155,7 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             num_proc=NUM_READ_PROCESSES,
             remove_columns=["filename"],
         )
-        .map(flatten_batches, batched=True)
+        .map(flatten, batched=True)
     )
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 

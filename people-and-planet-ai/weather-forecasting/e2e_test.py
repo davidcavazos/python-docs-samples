@@ -43,7 +43,7 @@ def data_path(bucket_name: str) -> str:
         "python",
         "create_dataset.py",
         "--data-path=data",
-        "--num-dates=2",
+        "--size=2",
         "--num-bins=1",
         "--num-points=1",
     )
@@ -88,7 +88,7 @@ def test_weather_forecasting_notebook(
         [
             '--runner="DataflowRunner"',
             f"--job_name={unique_name}-dataset",
-            "--num-dates=1",
+            "--size=2",
             "--num-bins=1",
             "--num-points=1",
             "--max-requests=1",

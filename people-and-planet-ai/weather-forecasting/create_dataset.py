@@ -33,10 +33,11 @@ import requests
 from serving import data
 
 # Default values.
-DATASET_SIZE = 1000
+DATASET_SIZE = 500
 NUM_BINS = 10
 NUM_POINTS = 1
 MAX_REQUESTS = 20  # default EE request quota
+MIN_BATCH_SIZE = 100
 
 # Constants.
 PATCH_SIZE = 5
@@ -136,6 +137,7 @@ def run(
     num_bins: int = NUM_BINS,
     num_points: int = NUM_POINTS,
     max_requests: int = MAX_REQUESTS,
+    min_batch_size: int = MIN_BATCH_SIZE,
     beam_args: Optional[List[str]] = None,
 ) -> None:
     """Runs an Apache Beam pipeline to create a dataset.
@@ -150,6 +152,7 @@ def run(
         num_bins: Number of bins for stratified sampling.
         num_points: Number of points per bin to pick.
         max_requests: Limit the number of concurrent requests to Earth Engine.
+        min_batch_size: Minimum number of examples to write per data file.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
     num_dates = int(size / num_bins / num_points)
@@ -171,7 +174,7 @@ def run(
             | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins, num_points)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
-            | "🗂️ Batch examples" >> beam.BatchElements(100)
+            | "🗂️ Batch examples" >> beam.BatchElements(min_batch_size)
             | "📚 Write NPZ files" >> beam.Map(write_npz, data_path)
         )
 
@@ -187,6 +190,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-bins", type=int, default=NUM_BINS)
     parser.add_argument("--num-points", type=int, default=NUM_POINTS)
     parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
+    parser.add_argument("--min-batch-size", type=int, default=MIN_BATCH_SIZE)
     args, beam_args = parser.parse_known_args()
 
     run(
@@ -195,5 +199,6 @@ if __name__ == "__main__":
         num_bins=args.num_bins,
         num_points=args.num_points,
         max_requests=args.max_requests,
+        min_batch_size=args.min_batch_size,
         beam_args=beam_args,
     )
