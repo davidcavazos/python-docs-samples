@@ -171,7 +171,7 @@ def run(
             | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins, num_points)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
-            | "🗂️ Batch examples" >> beam.BatchElements()
+            | "🗂️ Batch examples" >> beam.BatchElements(100)
             | "📚 Write NPZ files" >> beam.Map(write_npz, data_path)
         )
 

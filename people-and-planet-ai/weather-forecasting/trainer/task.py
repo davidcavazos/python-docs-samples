@@ -155,7 +155,7 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             num_proc=NUM_READ_PROCESSES,
             remove_columns=["filename"],
         )
-        .map(flatten_batches)
+        .map(flatten_batches, batched=True)
     )
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
