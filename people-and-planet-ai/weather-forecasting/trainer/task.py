@@ -142,8 +142,10 @@ def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             return {"inputs": npz["inputs"], "labels": npz["labels"]}
 
     def flatten_batches(data: dict[str, list]) -> dict[str, list]:
-        flatten = lambda field: [x for batch in data[field] for x in batch]
-        return {"inputs": flatten("inputs"), "labels": flatten("labels")}
+        return {
+            "inputs": [x for batch in data["inputs"] for x in batch],
+            "labels": [x for batch in data["labels"] for x in batch],
+        }
 
     files = glob(os.path.join(data_path, "*.npz"))
     dataset = (
