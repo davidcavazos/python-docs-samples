@@ -189,6 +189,7 @@ def run(
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
+        logging_strategy="epoch",
         evaluation_strategy="epoch",
     )
     trainer = Trainer(
