@@ -90,8 +90,9 @@ class WeatherModel(PreTrainedModel):
         outputs = self.model(inputs)
         if labels is None:
             return {"logits": outputs}
-        loss = self.loss(outputs, labels)
-        return {"loss": loss, "logits": outputs}
+        loss1 = self.loss(outputs[:, :, :, 0], labels[:, :, :, 0])
+        loss2 = self.loss(outputs[:, :, :, 1], labels[:, :, :, 1])
+        return {"loss": loss1 + loss2, "logits": outputs}
 
     @staticmethod
     def create(inputs: Dataset, **kwargs: AnyType) -> WeatherModel:
