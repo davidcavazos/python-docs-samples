@@ -22,11 +22,9 @@ from typing import Any as AnyType, Optional
 
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
-import evaluate
 import numpy as np
 import torch
 from transformers import (
-    EvalPrediction,
     PretrainedConfig,
     PreTrainedModel,
     Trainer,
