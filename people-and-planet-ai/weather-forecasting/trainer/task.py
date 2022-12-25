@@ -72,9 +72,12 @@ class WeatherModel(PreTrainedModel):
 
     def __init__(self, config: WeatherConfig) -> None:
         super().__init__(config)
-        self.layers = torch.nn.Sequential(
+        self.normalized = torch.nn.Sequential(
             Normalization(config.mean, config.std),
             MoveDim(-1, 1),  # convert to channels-first
+        )
+        self.output1 = torch.nn.Sequential(
+            self.normalized,
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(
@@ -82,12 +85,18 @@ class WeatherModel(PreTrainedModel):
             ),
             torch.nn.ReLU(),
             MoveDim(1, -1),  # convert to channels-last
-        )
-        self.output1 = torch.nn.Sequential(
             torch.nn.Linear(config.num_hidden2, 1),
             torch.nn.ReLU(),  # precipitation cannot be negative
         )
         self.output2 = torch.nn.Sequential(
+            self.normalized,
+            torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
+            torch.nn.ReLU(),
+            torch.nn.ConvTranspose2d(
+                config.num_hidden1, config.num_hidden2, config.kernel_size
+            ),
+            torch.nn.ReLU(),
+            MoveDim(1, -1),  # convert to channels-last
             torch.nn.Linear(config.num_hidden2, 1),
             torch.nn.ReLU(),  # precipitation cannot be negative
         )
@@ -97,9 +106,8 @@ class WeatherModel(PreTrainedModel):
         inputs: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
-        outputs = self.layers(inputs)
-        predictions1 = self.output1(outputs)
-        predictions2 = self.output2(outputs)
+        predictions1 = self.output1(inputs)
+        predictions2 = self.output2(inputs)
         predictions = torch.cat([predictions1, predictions2], -1)
         if labels is None:
             return {"logits": predictions}
