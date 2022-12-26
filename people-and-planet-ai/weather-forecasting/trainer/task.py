@@ -72,12 +72,9 @@ class WeatherModel(PreTrainedModel):
 
     def __init__(self, config: WeatherConfig) -> None:
         super().__init__(config)
-        self.normalized = torch.nn.Sequential(
+        self.layers = torch.nn.Sequential(
             Normalization(config.mean, config.std),
             MoveDim(-1, 1),  # convert to channels-first
-        )
-        self.output1 = torch.nn.Sequential(
-            self.normalized,
             torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
             torch.nn.ReLU(),
             torch.nn.ConvTranspose2d(
@@ -85,19 +82,7 @@ class WeatherModel(PreTrainedModel):
             ),
             torch.nn.ReLU(),
             MoveDim(1, -1),  # convert to channels-last
-            torch.nn.Linear(config.num_hidden2, 1),
-            torch.nn.ReLU(),  # precipitation cannot be negative
-        )
-        self.output2 = torch.nn.Sequential(
-            self.normalized,
-            torch.nn.Conv2d(config.num_inputs, config.num_hidden1, config.kernel_size),
-            torch.nn.ReLU(),
-            torch.nn.ConvTranspose2d(
-                config.num_hidden1, config.num_hidden2, config.kernel_size
-            ),
-            torch.nn.ReLU(),
-            MoveDim(1, -1),  # convert to channels-last
-            torch.nn.Linear(config.num_hidden2, 1),
+            torch.nn.Linear(config.num_hidden2, config.num_outputs),
             torch.nn.ReLU(),  # precipitation cannot be negative
         )
 
@@ -106,15 +91,13 @@ class WeatherModel(PreTrainedModel):
         inputs: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ) -> dict[str, torch.Tensor]:
-        predictions1 = self.output1(inputs)
-        predictions2 = self.output2(inputs)
-        predictions = torch.cat([predictions1, predictions2], -1)
+        predictions = self.layers(inputs)
         if labels is None:
             return {"logits": predictions}
 
         loss_fn = torch.nn.SmoothL1Loss()
-        loss1 = loss_fn(predictions1, labels[:, :, :, 0:1])
-        loss2 = loss_fn(predictions2, labels[:, :, :, 1:2])
+        loss1 = loss_fn(predictions[:, :, :, 0], labels[:, :, :, 0])
+        loss2 = loss_fn(predictions[:, :, :, 1], labels[:, :, :, 1])
         return {"loss": loss1 + loss2, "logits": predictions}
 
     @staticmethod
