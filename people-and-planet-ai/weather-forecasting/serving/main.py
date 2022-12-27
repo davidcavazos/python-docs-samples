@@ -18,6 +18,12 @@ from . import data
 
 app = flask.Flask(__name__)
 
+try:
+    data.ee_init()
+    ee_status = "✅ I was able to authenticate to Earth Engine!"
+except Exception as e:
+    ee_status = f"❌ I couldn't authenticate to Earth Engine 😔\n{e}"
+
 
 @app.route("/", methods=["POST"])
 def ping() -> dict:
@@ -27,12 +33,6 @@ def ping() -> dict:
     except Exception as e:
         args = None
         args_status = f"❌ I couldn't find any JSON arguments 😔\n{e}"
-
-    try:
-        data.ee_init()
-        ee_status = "✅ I was able to authenticate to Earth Engine!"
-    except Exception as e:
-        ee_status = f"❌ I couldn't authenticate to Earth Engine 😔\n{e}"
 
     return {
         "args_status": args_status,

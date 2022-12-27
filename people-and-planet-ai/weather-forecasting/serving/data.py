@@ -53,8 +53,17 @@ def ee_init() -> None:
     )
 
 
-# https://developers.google.com/earth-engine/datasets/catalog/NASA_GPM_L3_IMERG_V06
 def get_gpm(date: datetime) -> ee.Image:
+    """Gets a Global Precipitation Measurement image for the selected date.
+
+    For more information:
+        https://developers.google.com/earth-engine/datasets/catalog/NASA_GPM_L3_IMERG_V06
+
+    Args:
+        date: Date to take a snapshot from.
+
+    Returns: An Earth Engine image.
+    """
     window_start = (date - WINDOW).isoformat()
     window_end = date.isoformat()
     return (
@@ -69,12 +78,28 @@ def get_gpm(date: datetime) -> ee.Image:
 
 
 def get_gpm_sequence(dates: list[datetime]) -> ee.Image:
+    """Gets a Global Precipitation Measurement sequence for the selected dates.
+
+    Args:
+        dates: List of dates to get images from.
+
+    Returns: An Earth Engine image.
+    """
     images = [get_gpm(date) for date in dates]
     return ee.ImageCollection(images).toBands()
 
 
-# https://developers.google.com/earth-engine/datasets/catalog/NOAA_GOES_16_MCMIPF
 def get_goes16(date: datetime) -> ee.Image:
+    """Gets a GOES 16 image for the selected date.
+
+    For more information:
+        https://developers.google.com/earth-engine/datasets/catalog/NOAA_GOES_16_MCMIPF
+
+    Args:
+        date: Date to take a snapshot from.
+
+    Returns: An Earth Engine image.
+    """
     window_start = (date - WINDOW).isoformat()
     window_end = date.isoformat()
     return (
@@ -89,16 +114,36 @@ def get_goes16(date: datetime) -> ee.Image:
 
 
 def get_goes16_sequence(dates: list[datetime]) -> ee.Image:
+    """Gets a GOES 16 sequence for the selected dates.
+
+    Args:
+        dates: List of dates to get images from.
+
+    Returns: An Earth Engine image.
+    """
     images = [get_goes16(date) for date in dates]
     return ee.ImageCollection(images).toBands()
 
 
-# https://developers.google.com/earth-engine/datasets/catalog/MERIT_DEM_v1_0_3
 def get_elevation() -> ee.Image:
+    """Gets a digital elevation map.
+
+    For more information:
+        https://developers.google.com/earth-engine/datasets/catalog/MERIT_DEM_v1_0_3
+
+    Returns: An Earth Engine image.
+    """
     return ee.Image("MERIT/DEM/v1_0_3").rename("elevation").unmask(0).float()
 
 
 def get_inputs_image(date: datetime) -> ee.Image:
+    """Gets an Earth Engine image with all the inputs for the model.
+
+    Args:
+        date: Date to take a snapshot from.
+
+    Returns: An Earth Engine image.
+    """
     dates = [date + timedelta(hours=h) for h in INPUT_HOUR_DELTAS]
     precipitation = get_gpm_sequence(dates)
     cloud_and_moisture = get_goes16_sequence(dates)
@@ -107,6 +152,13 @@ def get_inputs_image(date: datetime) -> ee.Image:
 
 
 def get_labels_image(date: datetime) -> ee.Image:
+    """Gets an Earth Engine image with the labels to train the model.
+
+    Args:
+        date: Date to take a snapshot from.
+
+    Returns: An Earth Engine image.
+    """
     dates = [date + timedelta(hours=h) for h in OUTPUT_HOUR_DELTAS]
     return get_gpm_sequence(dates)
 

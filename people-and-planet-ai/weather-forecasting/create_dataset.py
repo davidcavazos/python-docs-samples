@@ -154,8 +154,8 @@ def run(
     to avoid quota issues. You can request for an increas of quota if you need it.
 
     Args:
-        data_path: Directory path to save the TFRecord files.
-        size: Total number of examples to create.
+        data_path: Directory path to save the data files.
+        num_dates: Number of dates to extract data points from.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         min_batch_size: Minimum number of examples to write per data file.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
@@ -189,10 +189,29 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-path", required=True)
-    parser.add_argument("--num-dates", type=int, default=NUM_DATES)
-    parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
-    parser.add_argument("--min-batch-size", type=int, default=MIN_BATCH_SIZE)
+    parser.add_argument(
+        "--data-path",
+        required=True,
+        help="Directory path to save the data files",
+    )
+    parser.add_argument(
+        "--num-dates",
+        type=int,
+        default=NUM_DATES,
+        help="Number of dates to extract data points from.",
+    )
+    parser.add_argument(
+        "--max-requests",
+        type=int,
+        default=MAX_REQUESTS,
+        help="Limit the number of concurrent requests to Earth Engine.",
+    )
+    parser.add_argument(
+        "--min-batch-size",
+        type=int,
+        default=MIN_BATCH_SIZE,
+        help="Minimum number of examples to write per data file.",
+    )
     args, beam_args = parser.parse_known_args()
 
     run(

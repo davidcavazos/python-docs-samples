@@ -41,8 +41,16 @@ TRAIN_TEST_RATIO = 0.9
 NUM_READ_PROCESSES = 16  # number of processes to read data files in parallel
 
 
-# https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
 class WeatherConfig(PretrainedConfig):
+    """A custom Hugging Face config for a WeatherModel.
+
+    This contains all the hyperparameters for the model, including the
+    mean and standard deviation used for the Normalization layer in the model.
+
+    For more information:
+        https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-configuration
+    """
+
     model_type = "weather"
 
     def __init__(
@@ -66,8 +74,13 @@ class WeatherConfig(PretrainedConfig):
         super().__init__(**kwargs)
 
 
-# https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-model
 class WeatherModel(PreTrainedModel):
+    """A custom Hugging Face model.
+
+    For more information:
+        https://huggingface.co/docs/transformers/main/en/custom_models#writing-a-custom-model
+    """
+
     config_class = WeatherConfig
 
     def __init__(self, config: WeatherConfig) -> None:
@@ -89,6 +102,19 @@ class WeatherModel(PreTrainedModel):
     def forward(
         self, inputs: torch.Tensor, labels: Optional[torch.Tensor] = None
     ) -> dict[str, torch.Tensor]:
+        """Computes predictions.
+
+        If `labels` are passed, it computes the loss between the model's
+        predictions and the actual labels.
+
+        Args:
+            inputs: Input data.
+            labels: Ground truth data.
+
+        Returns:
+            {"loss": loss, "logits": predictions} if `labels` is provided.
+            {"logits": predictions} otherwise.
+        """
         predictions = self.layers(inputs)
         if labels is None:
             return {"logits": predictions}
@@ -99,6 +125,8 @@ class WeatherModel(PreTrainedModel):
 
     @staticmethod
     def create(inputs: Dataset, **kwargs: AnyType) -> WeatherModel:
+        """Creates a new WeatherModel calculating the
+        mean and standard deviation from a dataset."""
         data = np.array(inputs, np.float32)
         mean = data.mean(axis=(0, 1, 2))[None, None, None, :]
         std = data.std(axis=(0, 1, 2))[None, None, None, :]
@@ -106,9 +134,11 @@ class WeatherModel(PreTrainedModel):
         return WeatherModel(config)
 
     def predict(self, inputs: AnyType) -> np.ndarray:
+        """Predicts a single request."""
         return self.predict_batch(torch.as_tensor([inputs]))[0]
 
     def predict_batch(self, inputs_batch: AnyType) -> np.ndarray:
+        """Predicts a batch of requests."""
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = self.to(device)
         with torch.no_grad():
@@ -130,6 +160,8 @@ class Normalization(torch.nn.Module):
 
 
 class MoveDim(torch.nn.Module):
+    """Moves a dimension axis to another position."""
+
     def __init__(self, src: int, dest: int) -> None:
         super().__init__()
         self.src = src
@@ -140,6 +172,8 @@ class MoveDim(torch.nn.Module):
 
 
 def read_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
+    """Reads data files into a Dataset with train/test splits."""
+
     def read_data_file(item: dict[str, str]) -> dict[str, np.ndarray]:
         with open(item["filename"], "rb") as f:
             npz = np.load(f)
@@ -172,6 +206,16 @@ def run(
     train_test_ratio: float = TRAIN_TEST_RATIO,
     from_checkpoint: bool = False,
 ) -> None:
+    """Trains a new WeatherModel.
+
+    Args:
+        data_path: Directory path to read data files from.
+        model_path Directory path to write the trained model to.
+        epochs: Number of times to go through the training dataset.
+        batch_size: Number of training examples to learn from at once.
+        train_test_ratio: Ratio of examples to use for training and for testing.
+        from_checkpoint: Whether or not to resume from latest checkpoint.
+    """
 
     print(f"data_path: {data_path}")
     print(f"model_path: {model_path}")
@@ -209,12 +253,39 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-path", required=True)
-    parser.add_argument("--model-path", required=True)
-    parser.add_argument("--epochs", type=int, default=EPOCHS)
-    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
-    parser.add_argument("--train-test-ratio", type=float, default=TRAIN_TEST_RATIO)
-    parser.add_argument("--from-checkpoint", action="store_true")
+    parser.add_argument(
+        "--data-path",
+        required=True,
+        help="Directory path to read data files from.",
+    )
+    parser.add_argument(
+        "--model-path",
+        required=True,
+        help="Directory path to write the trained model to.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=EPOCHS,
+        help="Number of times to go through the training dataset.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZE,
+        help="Number of training examples to learn from at once.",
+    )
+    parser.add_argument(
+        "--train-test-ratio",
+        type=float,
+        default=TRAIN_TEST_RATIO,
+        help="Ratio of examples to use for training and for testing.",
+    )
+    parser.add_argument(
+        "--from-checkpoint",
+        action="store_true",
+        help="Whether or not to resume from latest checkpoint.",
+    )
     args = parser.parse_args()
 
     run(**vars(args))
