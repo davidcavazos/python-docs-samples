@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from glob import glob
 import os
-from typing import Any as AnyType, Optional
+from typing import Any as AnyType, Callable, Optional
 
 from datasets.arrow_dataset import Dataset
 from datasets.dataset_dict import DatasetDict
@@ -38,7 +38,8 @@ BATCH_SIZE = 512
 TRAIN_TEST_RATIO = 0.9
 
 # Constants.
-NUM_READ_PROCESSES = 16  # number of processes to read data files in parallel
+NUM_DATASET_READ_PROC = 16  # number of processes to read data files in parallel
+NUM_DATASET_PROC = os.cpu_count() or 8  # number of processes for CPU transformations
 
 
 class WeatherConfig(PretrainedConfig):
@@ -179,21 +180,38 @@ def read_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
             npz = np.load(f)
             return {"inputs": npz["inputs"], "labels": npz["labels"]}
 
-    def flatten(data: dict[str, list]) -> dict[str, list]:
-        return {
-            "inputs": [x for batch in data["inputs"] for x in batch],
-            "labels": [x for batch in data["labels"] for x in batch],
-        }
+    def apply(f: Callable) -> Callable:
+        def do(batch: dict[str, list]) -> dict[str, list]:
+            return {key: f(value) for key, value in batch.items()}
+
+        return do
+
+    def augment(batch: list) -> np.ndarray:
+        transformed = [
+            np.rot90(batch, 0, (1, 2)),
+            np.rot90(batch, 1, (1, 2)),
+            np.rot90(batch, 2, (1, 2)),
+            np.rot90(batch, 3, (1, 2)),
+            np.flip(np.rot90(batch, 0, (1, 2)), axis=1),
+            np.flip(np.rot90(batch, 1, (1, 2)), axis=1),
+            np.flip(np.rot90(batch, 2, (1, 2)), axis=1),
+            np.flip(np.rot90(batch, 3, (1, 2)), axis=1),
+        ]
+        return np.concatenate(transformed)
+
+    def flatten(batch: list) -> np.ndarray:
+        return np.concatenate(batch)
 
     files = glob(os.path.join(data_path, "*.npz"))
     dataset = (
         Dataset.from_dict({"filename": files})
         .map(
             read_data_file,
-            num_proc=NUM_READ_PROCESSES,
+            num_proc=NUM_DATASET_READ_PROC,
             remove_columns=["filename"],
         )
-        .map(flatten, batched=True)
+        .map(apply(augment), num_proc=NUM_DATASET_PROC)
+        .map(apply(flatten), batched=True, num_proc=NUM_DATASET_PROC)
     )
     return dataset.train_test_split(train_size=train_test_ratio, shuffle=True)
 
