@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 import textwrap
 
 # The conftest contains a bunch of reusable fixtures used all over the place.
@@ -58,6 +59,14 @@ def gcs_data_path(bucket_name: str, data_path: str) -> str:
     return gcs_path
 
 
+@pytest.fixture(scope="session")
+def model_local_path() -> str:
+    path = "model_local"
+    os.makedirs(path)
+    conftest.run_cmd("cp", os.path.join("model", "*"), path)
+    return path
+
+
 # @pytest.fixture(scope="session")
 # def gcs_model_path(bucket_name: str) -> str:
 #     # This is a different path than where Vertex AI saves its model.
@@ -88,6 +97,7 @@ def test_weather_forecasting_notebook(
     location: str,
     data_path: str,
     gcs_data_path: str,
+    model_local_path: str,
     # gcs_model_path: str,
 ) -> None:
 
@@ -125,8 +135,8 @@ def test_weather_forecasting_notebook(
             "# 🧠 Train the model": {"variables": {"data_path": data_path}},
             "# ☁️ Train the model in Vertex AI": {
                 "variables": {"epochs": 2}
-                # --data-path=gcs_data_path
+                # gcs_data_path
             },
-            "# 🔮 Make predictions": {},
+            "# 🔮 Make predictions": {},  # model_local_path
         },
     )
