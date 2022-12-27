@@ -33,7 +33,7 @@ import requests
 from serving import data
 
 # Default values.
-NUM_DATES = 50
+NUM_DATES = 30
 MAX_REQUESTS = 20  # default EE request quota
 MIN_BATCH_SIZE = 100
 

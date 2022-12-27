@@ -119,12 +119,9 @@ def show_outputs(patch: np.ndarray) -> None:
     fig.show()
 
 
-def show_predictions(results: list[dict[str, np.ndarray]]) -> None:
+def show_predictions(results: list[tuple]) -> None:
     fig = make_subplots(rows=5, cols=len(results), vertical_spacing=0.025)
-    for i, result in enumerate(results, start=1):
-        inputs = result["inputs"]
-        predictions = result["predictions"]
-        labels = result["labels"]
+    for i, (inputs, predictions, labels) in enumerate(results, start=1):
         fig.add_trace(go.Image(z=render_goes16(inputs[:, :, 35:51])), row=1, col=i)
         fig.add_trace(go.Image(z=render_gpm(inputs[:, :, 2:3])), row=2, col=i)
         fig.add_trace(go.Image(z=render_elevation(inputs[:, :, 51:52])), row=3, col=i)

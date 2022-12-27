@@ -87,18 +87,15 @@ class WeatherModel(PreTrainedModel):
         )
 
     def forward(
-        self,
-        inputs: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
+        self, inputs: torch.Tensor, labels: Optional[torch.Tensor] = None
     ) -> dict[str, torch.Tensor]:
         predictions = self.layers(inputs)
         if labels is None:
             return {"logits": predictions}
 
         loss_fn = torch.nn.SmoothL1Loss()
-        loss1 = loss_fn(predictions[:, :, :, 0], labels[:, :, :, 0])
-        loss2 = loss_fn(predictions[:, :, :, 1], labels[:, :, :, 1])
-        return {"loss": loss1 + loss2, "logits": predictions}
+        loss = loss_fn(predictions, labels)
+        return {"loss": loss, "logits": predictions}
 
     @staticmethod
     def create(inputs: Dataset, **kwargs: AnyType) -> WeatherModel:
@@ -191,7 +188,7 @@ def run(
     print(model)
 
     training_args = TrainingArguments(
-        output_dir=os.path.join(model_path, "outputs"),
+        output_dir=os.path.join(model_path, "checkpoints"),
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         num_train_epochs=epochs,
