@@ -39,23 +39,29 @@ def test_name(python_version: str) -> str:
 
 @pytest.fixture(scope="session")
 def data_path(bucket_name: str) -> str:
+    path = "data_local"
     conftest.run_cmd(
         "python",
         "create_dataset.py",
-        "--data-path=data",
+        f"--data-path={path}",
         "--size=2",
         "--num-bins=1",
         "--num-points=1",
     )
-    gcs_path = f"gs://{bucket_name}/weather/data/"
-    conftest.run_cmd("gsutil", "-m", "cp", "./data/*.npz", gcs_path)
+    return path
+
+
+@pytest.fixture(scope="session")
+def gcs_data_path(bucket_name: str, data_path: str) -> str:
+    gcs_path = f"gs://{bucket_name}/data/"
+    conftest.run_cmd("gsutil", "-m", "cp", f"{data_path}/*.npz", gcs_path)
     return gcs_path
 
 
 @pytest.fixture(scope="session")
-def model_path(bucket_name: str) -> str:
+def gcs_model_path(bucket_name: str) -> str:
     # This is a different path than where Vertex AI saves its model.
-    gcs_path = f"gs://{bucket_name}/weather/model"
+    gcs_path = f"gs://{bucket_name}/model"
     conftest.run_cmd("gsutil", "-m", "cp", "-r", "./model", gcs_path)
     return gcs_path
 
@@ -81,16 +87,16 @@ def test_weather_forecasting_notebook(
     bucket_name: str,
     location: str,
     data_path: str,
-    model_path: str,
+    gcs_data_path: str,
+    gcs_model_path: str,
 ) -> None:
 
     dataflow_dataset_flags = " ".join(
         [
             '--runner="DataflowRunner"',
             f"--job_name={unique_name}-dataset",
-            "--size=2",
+            "--num-dates=1",
             "--num-bins=1",
-            "--num-points=1",
             "--max-requests=1",
         ]
     )
@@ -116,8 +122,13 @@ def test_weather_forecasting_notebook(
             "# ☁️ Create the dataset in Dataflow": {
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
-            "# 🧠 Train the model": {},
-            "# ☁️ Train the model in Vertex AI": {"variables": {"epochs": 2}},
+            "# 🧠 Train the model": {"variables": {"data_path": data_path}},
+            "# ☁️ Train the model in Vertex AI": {
+                "variables": {
+                    "epochs": 2,
+                    "--data-path": gcs_data_path.replace("gs://", "/gcs/"),
+                }
+            },
             "# 🔮 Make predictions": {},
         },
     )

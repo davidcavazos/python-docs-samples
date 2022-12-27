@@ -47,7 +47,7 @@ END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
 
 
-def sample_points(date: datetime) -> Iterable[tuple]:
+def sample_points(date: datetime, num_bins: int = NUM_BINS) -> Iterable[tuple]:
     """Selects around the same number of points for every classification.
 
     Since our labels are numeric continuous values, we convert them into
@@ -65,6 +65,7 @@ def sample_points(date: datetime) -> Iterable[tuple]:
 
     Args:
         date: The date of interest.
+        num_bins: Number of bins to bucketize values.
 
     Yields: (date, lon_lat) pairs.
     """
@@ -73,17 +74,17 @@ def sample_points(date: datetime) -> Iterable[tuple]:
         data.get_gpm(date)
         .clamp(0, MAX_PRECIPITATION)
         .divide(MAX_PRECIPITATION)
-        .multiply(NUM_BINS - 1)
+        .multiply(num_bins - 1)
         .uint8()
     )
     elevation_bins = (
         data.get_elevation()
         .clamp(0, MAX_ELEVATION)
         .divide(MAX_ELEVATION)
-        .multiply(NUM_BINS - 1)
+        .multiply(num_bins - 1)
         .uint8()
     )
-    unique_bins = elevation_bins.multiply(NUM_BINS).add(precipitation_bins)
+    unique_bins = elevation_bins.multiply(num_bins).add(precipitation_bins)
     points = unique_bins.stratifiedSample(
         numPoints=1,
         region=ee.Geometry.Polygon(POLYGON),
@@ -143,6 +144,7 @@ def write_npz(batch: list[tuple[np.ndarray, np.ndarray]], data_path: str) -> str
 def run(
     data_path: str,
     num_dates: int = NUM_DATES,
+    num_bins: int = NUM_BINS,
     max_requests: int = MAX_REQUESTS,
     min_batch_size: int = MIN_BATCH_SIZE,
     beam_args: Optional[List[str]] = None,
@@ -156,6 +158,7 @@ def run(
     Args:
         data_path: Directory path to save the data files.
         num_dates: Number of dates to extract data points from.
+        num_bins: Number of bins to bucketize values.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         min_batch_size: Minimum number of examples to write per data file.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
@@ -175,7 +178,7 @@ def run(
         (
             pipeline
             | "📆 Random dates" >> beam.Create(random_dates)
-            | "📌 Sample points" >> beam.FlatMap(sample_points)
+            | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
             | "🗂️ Batch examples" >> beam.BatchElements(min_batch_size)
@@ -201,6 +204,12 @@ if __name__ == "__main__":
         help="Number of dates to extract data points from.",
     )
     parser.add_argument(
+        "--num-bins",
+        type=int,
+        default=NUM_BINS,
+        help="Number of bins to bucketize values.",
+    )
+    parser.add_argument(
         "--max-requests",
         type=int,
         default=MAX_REQUESTS,
@@ -217,6 +226,7 @@ if __name__ == "__main__":
     run(
         data_path=args.data_path,
         num_dates=args.num_dates,
+        num_bins=args.num_bins,
         max_requests=args.max_requests,
         min_batch_size=args.min_batch_size,
         beam_args=beam_args,
