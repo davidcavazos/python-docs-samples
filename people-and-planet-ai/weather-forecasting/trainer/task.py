@@ -142,7 +142,7 @@ class MoveDim(torch.nn.Module):
         return x.moveaxis(self.src, self.dest)
 
 
-def create_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
+def read_dataset(data_path: str, train_test_ratio: float) -> DatasetDict:
     def read_data_file(item: dict[str, str]) -> dict[str, np.ndarray]:
         with open(item["filename"], "rb") as f:
             npz = np.load(f)
@@ -183,7 +183,7 @@ def run(
     print(f"train_test_ratio: {train_test_ratio}")
     print("-" * 40)
 
-    dataset = create_dataset(data_path, train_test_ratio)
+    dataset = read_dataset(data_path, train_test_ratio)
     print(dataset)
 
     model = WeatherModel.create(dataset["train"]["inputs"])
@@ -192,11 +192,11 @@ def run(
 
     training_args = TrainingArguments(
         output_dir=os.path.join(model_path, "outputs"),
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
         num_train_epochs=epochs,
         logging_strategy="epoch",
         evaluation_strategy="epoch",
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
     )
     trainer = Trainer(
         model,

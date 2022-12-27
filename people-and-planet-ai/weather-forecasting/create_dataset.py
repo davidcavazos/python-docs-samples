@@ -33,22 +33,21 @@ import requests
 from serving import data
 
 # Default values.
-DATASET_SIZE = 500
-NUM_BINS = 10
-NUM_POINTS = 1
+NUM_DATES = 50
 MAX_REQUESTS = 20  # default EE request quota
 MIN_BATCH_SIZE = 100
 
 # Constants.
+NUM_BINS = 10
+MAX_PRECIPITATION = 30  # found empirically
+MAX_ELEVATION = 6000  # found empirically
 PATCH_SIZE = 5
 START_DATE = datetime(2017, 7, 10)
 END_DATE = datetime.now() - timedelta(days=30)
 POLYGON = [(-140.0, 60.0), (-140.0, -60.0), (-10.0, -60.0), (-10.0, 60.0)]
 
 
-def sample_points(
-    date: datetime, num_bins: int = NUM_BINS, num_points: int = NUM_POINTS
-) -> Iterable[tuple]:
+def sample_points(date: datetime) -> Iterable[tuple]:
     """Selects around the same number of points for every classification.
 
     Since our labels are numeric continuous values, we convert them into
@@ -57,26 +56,36 @@ def sample_points(
 
     From analyzing the precipitation data, most values are within 0 and 30,
     but values above 30 still exist. So we clamp them to values to
-    between 0 and 30, and then bucketize them by `num_bins`.
+    between 0 and 30, and then bucketize them.
+
+    We do the same for the elevation, and finally get a "unique" bin number
+    by combining the precipitationd and elevation bins. We do this because
+    most of the precipitation values fall under elevation zero, so the data
+    would be extremely biased.
 
     Args:
         date: The date of interest.
-        num_bins: Number of bins for stratified sampling.
-        num_points: Number of points per bin to pick.
 
     Yields: (date, lon_lat) pairs.
     """
     data.ee_init()
-    max_value = 30
-    bins_image = (
-        data.get_labels_image(date)
-        .clamp(0, max_value)
-        .divide(max_value)
-        .multiply(num_bins - 1)
+    precipitation_bins = (
+        data.get_gpm(date)
+        .clamp(0, MAX_PRECIPITATION)
+        .divide(MAX_PRECIPITATION)
+        .multiply(NUM_BINS - 1)
         .uint8()
     )
-    points = bins_image.stratifiedSample(
-        num_points,
+    elevation_bins = (
+        data.get_elevation()
+        .clamp(0, MAX_ELEVATION)
+        .divide(MAX_ELEVATION)
+        .multiply(NUM_BINS - 1)
+        .uint8()
+    )
+    unique_bins = elevation_bins.multiply(NUM_BINS).add(precipitation_bins)
+    points = unique_bins.stratifiedSample(
+        numPoints=1,
         region=ee.Geometry.Polygon(POLYGON),
         scale=data.SCALE,
         geometries=True,
@@ -133,9 +142,7 @@ def write_npz(batch: list[tuple[np.ndarray, np.ndarray]], data_path: str) -> str
 
 def run(
     data_path: str,
-    size: int = DATASET_SIZE,
-    num_bins: int = NUM_BINS,
-    num_points: int = NUM_POINTS,
+    num_dates: int = NUM_DATES,
     max_requests: int = MAX_REQUESTS,
     min_batch_size: int = MIN_BATCH_SIZE,
     beam_args: Optional[List[str]] = None,
@@ -149,13 +156,10 @@ def run(
     Args:
         data_path: Directory path to save the TFRecord files.
         size: Total number of examples to create.
-        num_bins: Number of bins for stratified sampling.
-        num_points: Number of points per bin to pick.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         min_batch_size: Minimum number of examples to write per data file.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
-    num_dates = int(size / num_bins / num_points)
     random_dates = [
         START_DATE + (END_DATE - START_DATE) * random.random() for _ in range(num_dates)
     ]
@@ -171,7 +175,7 @@ def run(
         (
             pipeline
             | "📆 Random dates" >> beam.Create(random_dates)
-            | "📌 Sample points" >> beam.FlatMap(sample_points, num_bins, num_points)
+            | "📌 Sample points" >> beam.FlatMap(sample_points)
             | "🃏 Reshuffle" >> beam.Reshuffle()
             | "📑 Get example" >> beam.FlatMapTuple(try_get_example)
             | "🗂️ Batch examples" >> beam.BatchElements(min_batch_size)
@@ -186,18 +190,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", required=True)
-    parser.add_argument("--size", type=int, default=DATASET_SIZE)
-    parser.add_argument("--num-bins", type=int, default=NUM_BINS)
-    parser.add_argument("--num-points", type=int, default=NUM_POINTS)
+    parser.add_argument("--num-dates", type=int, default=NUM_DATES)
     parser.add_argument("--max-requests", type=int, default=MAX_REQUESTS)
     parser.add_argument("--min-batch-size", type=int, default=MIN_BATCH_SIZE)
     args, beam_args = parser.parse_known_args()
 
     run(
         data_path=args.data_path,
-        size=args.size,
-        num_bins=args.num_bins,
-        num_points=args.num_points,
+        num_dates=args.num_dates,
         max_requests=args.max_requests,
         min_batch_size=args.min_batch_size,
         beam_args=beam_args,

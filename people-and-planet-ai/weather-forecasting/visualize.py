@@ -100,13 +100,14 @@ def render_elevation(patch: np.ndarray) -> np.ndarray:
 
 
 def show_inputs(patch: np.ndarray) -> None:
-    fig = make_subplots(rows=2, cols=4, vertical_spacing=0.05)
+    fig = make_subplots(rows=2, cols=4)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 0:1])), row=1, col=1)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 1:2])), row=1, col=2)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 2:3])), row=1, col=3)
     fig.add_trace(go.Image(z=render_goes16(patch[:, :, 3:19])), row=2, col=1)
     fig.add_trace(go.Image(z=render_goes16(patch[:, :, 19:35])), row=2, col=2)
     fig.add_trace(go.Image(z=render_goes16(patch[:, :, 35:51])), row=2, col=3)
+    fig.update_layout(height=600)
     fig.show()
 
 
@@ -114,4 +115,23 @@ def show_outputs(patch: np.ndarray) -> None:
     fig = make_subplots(rows=1, cols=2)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 0:1])), row=1, col=1)
     fig.add_trace(go.Image(z=render_gpm(patch[:, :, 1:2])), row=1, col=2)
+    fig.update_layout(height=400)
+    fig.show()
+
+
+def show_predictions(results: list[dict[str, np.ndarray]]) -> None:
+    fig = make_subplots(rows=5, cols=len(results), vertical_spacing=0.025)
+    for i, result in enumerate(results, start=1):
+        inputs = result["inputs"]
+        predictions = result["predictions"]
+        labels = result["labels"]
+        fig.add_trace(go.Image(z=render_goes16(inputs[:, :, 35:51])), row=1, col=i)
+        fig.add_trace(go.Image(z=render_gpm(inputs[:, :, 2:3])), row=2, col=i)
+        fig.add_trace(go.Image(z=render_elevation(inputs[:, :, 51:52])), row=3, col=i)
+        fig.add_trace(go.Image(z=render_gpm(predictions[:, :, 0:1])), row=4, col=i)
+        fig.add_trace(go.Image(z=render_gpm(labels[:, :, 0:1])), row=5, col=i)
+    fig.update_layout(
+        height=5 * int(1000 / len(results)),
+        margin=dict(l=0, r=0, b=0, t=0),
+    )
     fig.show()
