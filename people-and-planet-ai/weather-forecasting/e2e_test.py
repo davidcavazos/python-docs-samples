@@ -63,7 +63,7 @@ def gcs_data_path(bucket_name: str, data_path: str) -> str:
 def model_local_path() -> str:
     path = "model_local"
     os.makedirs(path)
-    conftest.run_cmd("cp", os.path.join("model", "*"), path)
+    conftest.run_cmd("cp", "-r", "model", path)
     return path
 
 
