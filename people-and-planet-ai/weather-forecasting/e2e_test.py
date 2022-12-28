@@ -61,7 +61,7 @@ def gcs_data_path(bucket_name: str, data_path: str) -> str:
 
 @pytest.fixture(scope="session")
 def model_local_path() -> str:
-    path = "model_local"
+    path = "local_model"
     os.makedirs(path)
     conftest.run_cmd("cp", "-r", "model", path)
     return path
