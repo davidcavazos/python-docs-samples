@@ -63,7 +63,9 @@ def gcs_data_path(bucket_name: str, data_path: str) -> str:
 def model_local_path() -> str:
     path = "local_model"
     os.makedirs(path)
-    conftest.run_cmd("cp", "-r", "model", path)
+    conftest.run_cmd("cp", os.path.join("model", "config.json"), path)
+    conftest.run_cmd("cp", os.path.join("model", "pytorch_model.bin"), path)
+    conftest.run_cmd("cp", os.path.join("model", "training_args.bin"), path)
     return path
 
 
