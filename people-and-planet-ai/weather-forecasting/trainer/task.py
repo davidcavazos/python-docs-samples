@@ -215,6 +215,7 @@ def augmented(dataset: Dataset) -> Dataset:
     return dataset.map(
         lambda batch: {key: augment(values) for key, values in batch.items()},
         batched=True,
+        num_proc=NUM_DATASET_PROC,
     )
 
 
