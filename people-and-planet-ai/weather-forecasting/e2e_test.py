@@ -17,7 +17,6 @@ from __future__ import annotations
 from datetime import datetime
 import os
 import textwrap
-from typing import Iterable
 
 # The conftest contains a bunch of reusable fixtures used all over the place.
 # If we use a fixture not defined here, it must be on the conftest!
