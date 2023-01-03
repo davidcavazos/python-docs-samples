@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import datetime
 import os
 import textwrap
+from typing import Iterable
 
 # The conftest contains a bunch of reusable fixtures used all over the place.
 # If we use a fixture not defined here, it must be on the conftest!
@@ -39,7 +40,7 @@ def test_name(python_version: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def data_path(bucket_name: str) -> str:
+def data_local_path(bucket_name: str) -> str:
     path = "data_local"
     conftest.run_cmd(
         "python",
@@ -53,9 +54,9 @@ def data_path(bucket_name: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def gcs_data_path(bucket_name: str, data_path: str) -> str:
+def data_gcs_path(bucket_name: str, data_local_path: str) -> str:
     gcs_path = f"gs://{bucket_name}/weather/data/"
-    conftest.run_cmd("gsutil", "-m", "cp", f"{data_path}/*.npz", gcs_path)
+    conftest.run_cmd("gsutil", "-m", "cp", f"{data_local_path}/*.npz", gcs_path)
     return gcs_path
 
 
@@ -67,14 +68,6 @@ def model_local_path() -> str:
     conftest.run_cmd("cp", os.path.join("model", "pytorch_model.bin"), path)
     conftest.run_cmd("cp", os.path.join("model", "training_args.bin"), path)
     return path
-
-
-# @pytest.fixture(scope="session")
-# def gcs_model_path(bucket_name: str) -> str:
-#     # This is a different path than where Vertex AI saves its model.
-#     gcs_path = f"gs://{bucket_name}/model"
-#     conftest.run_cmd("gsutil", "-m", "cp", "-r", "./model", gcs_path)
-#     return gcs_path
 
 
 # ---------- TESTS ---------- #
@@ -97,10 +90,9 @@ def test_weather_forecasting_notebook(
     project: str,
     bucket_name: str,
     location: str,
-    data_path: str,
-    gcs_data_path: str,
+    data_local_path: str,
+    data_gcs_path: str,
     model_local_path: str,
-    # gcs_model_path: str,
 ) -> None:
 
     dataflow_dataset_flags = " ".join(
@@ -134,11 +126,11 @@ def test_weather_forecasting_notebook(
             "# ☁️ Create the dataset in Dataflow": {
                 "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             },
-            "# 🧠 Train the model": {"variables": {"data_path": data_path}},
+            "# 🧠 Train the model": {"variables": {"data_path": data_local_path}},
             "# ☁️ Train the model in Vertex AI": {
                 "variables": {"epochs": 2}
-                # gcs_data_path
+                # uses data_gcs_path
             },
-            "# 🔮 Make predictions": {},  # model_local_path
+            "# 🔮 Make predictions": {},  # uses model_local_path
         },
     )
