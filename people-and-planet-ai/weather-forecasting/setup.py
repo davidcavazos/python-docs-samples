@@ -16,6 +16,7 @@ from setuptools import setup
 
 # Requirements for Dataflow.
 setup(
+    name="weather-dataset",
     packages=["serving"],
     install_requires=[
         "apache-beam[gcp]==2.43.0",
