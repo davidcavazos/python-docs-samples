@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,8 +30,6 @@ import ee
 import numpy as np
 import requests
 
-from serving import data
-
 # Default values.
 NUM_DATES = 30
 MAX_REQUESTS = 20  # default EE request quota
@@ -54,9 +52,10 @@ def sample_points(date: datetime, num_bins: int = NUM_BINS) -> Iterable[tuple]:
     integers within a predifined range. Each integer value is treated
     as a different classification.
 
-    From analyzing the precipitation data, most values are within 0 and 30,
-    but values above 30 still exist. So we clamp them to values to
-    between 0 and 30, and then bucketize them.
+    From analyzing the precipitation data, most values are within 0 mm/hr
+    and 30 mm/hr of precipitation (rain and snow), but values above 30 mm/hr
+    still exist. So we clamp them to values to between 0 mm/hr and 30 mm/hr,
+    and then bucketize them.
 
     We do the same for the elevation, and finally get a "unique" bin number
     by combining the precipitationd and elevation bins. We do this because
@@ -69,7 +68,8 @@ def sample_points(date: datetime, num_bins: int = NUM_BINS) -> Iterable[tuple]:
 
     Yields: (date, lon_lat) pairs.
     """
-    data.ee_init()
+    from weather import data
+
     precipitation_bins = (
         data.get_gpm(date)
         .clamp(0, MAX_PRECIPITATION)
@@ -107,7 +107,8 @@ def get_training_example(
 
     Returns: An (inputs, labels) pair of NumPy arrays.
     """
-    data.ee_init()
+    from weather import data
+
     return (
         data.get_inputs_patch(date, point, patch_size),
         data.get_labels_patch(date, point, patch_size),
@@ -170,9 +171,8 @@ def run(
     beam_options = PipelineOptions(
         beam_args,
         save_main_session=True,
-        setup_file="./setup.py",
-        max_num_workers=max_requests,  # distributed runners
         direct_num_workers=max(max_requests, MAX_REQUESTS),  # direct runner
+        max_num_workers=max_requests,  # distributed runners
     )
     with beam.Pipeline(options=beam_options) as pipeline:
         (
@@ -186,7 +186,7 @@ def run(
         )
 
 
-if __name__ == "__main__":
+def main() -> None:
     import argparse
 
     logging.getLogger().setLevel(logging.INFO)
@@ -231,3 +231,7 @@ if __name__ == "__main__":
         min_batch_size=args.min_batch_size,
         beam_args=beam_args,
     )
+
+
+if __name__ == "__main__":
+    main()

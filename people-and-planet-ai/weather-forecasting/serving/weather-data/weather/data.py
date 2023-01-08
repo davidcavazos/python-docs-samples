@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,22 +35,21 @@ INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
 WINDOW = timedelta(days=1)
 
+# Authenticate and initialize Earth Engine with the default credentials.
+credentials, project = google.auth.default(
+    scopes=[
+        "https://www.googleapis.com/auth/cloud-platform",
+        "https://www.googleapis.com/auth/earthengine",
+    ]
+)
 
-def ee_init() -> None:
-    """Authenticate and initialize Earth Engine with the default credentials."""
-    # Use the Earth Engine High Volume endpoint.
-    #   https://developers.google.com/earth-engine/cloud/highvolume
-    credentials, project = google.auth.default(
-        scopes=[
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/earthengine",
-        ]
-    )
-    ee.Initialize(
-        credentials.with_quota_project(None),
-        project=project,
-        opt_url="https://earthengine-highvolume.googleapis.com",
-    )
+# Use the Earth Engine High Volume endpoint.
+#   https://developers.google.com/earth-engine/cloud/highvolume
+ee.Initialize(
+    credentials.with_quota_project(None),
+    project=project,
+    opt_url="https://earthengine-highvolume.googleapis.com",
+)
 
 
 def get_gpm(date: datetime) -> ee.Image:
@@ -166,7 +165,7 @@ def get_labels_image(date: datetime) -> ee.Image:
 def get_inputs_patch(date: datetime, point: tuple, patch_size: int) -> np.ndarray:
     """Gets the patch of pixels for the inputs.
 
-    args:
+    Args:
         date: The date of interest.
         point: A (longitude, latitude) coordinate.
         patch_size: Size in pixels of the surrounding square patch.
@@ -181,7 +180,7 @@ def get_inputs_patch(date: datetime, point: tuple, patch_size: int) -> np.ndarra
 def get_labels_patch(date: datetime, point: tuple, patch_size: int) -> np.ndarray:
     """Gets the patch of pixels for the labels.
 
-    args:
+    Args:
         date: The date of interest.
         point: A (longitude, latitude) coordinate.
         patch_size: Size in pixels of the surrounding square patch.

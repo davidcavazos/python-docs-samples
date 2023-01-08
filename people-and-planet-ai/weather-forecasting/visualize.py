@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions to visualize data."""
+"""Utility functions to visualize data.
+
+Color names from https://chir.ag/projects/name-that-color
+"""
 
 from __future__ import annotations
 
@@ -73,30 +76,30 @@ def render_goes16(patch: np.ndarray) -> np.ndarray:
 
 def render_gpm(patch: np.ndarray) -> np.ndarray:
     palette = [
-        "000096",
-        "0064ff",
-        "00b4ff",
-        "33db80",
-        "9beb4a",
-        "ffeb00",
-        "ffb300",
-        "ff6400",
-        "eb1e00",
-        "af0000",
+        "000096",  # Navy blue
+        "0064ff",  # Blue ribbon blue
+        "00b4ff",  # Dodger blue
+        "33db80",  # Shamrock green
+        "9beb4a",  # Conifer green
+        "ffeb00",  # Turbo yellow
+        "ffb300",  # Selective yellow
+        "ff6400",  # Blaze orange
+        "eb1e00",  # Scarlet red
+        "af0000",  # Bright red
     ]
     return render_palette(patch[:, :, 0], palette, max=20)
 
 
 def render_elevation(patch: np.ndarray) -> np.ndarray:
     palette = [
-        "000000",
-        "478fcd",
-        "86c58e",
-        "afc35e",
-        "8f7131",
-        "b78d4f",
-        "e2b8a6",
-        "ffffff",
+        "000000",  # Black
+        "478fcd",  # Shakespeare blue
+        "86c58e",  # De York green
+        "afc35e",  # Celery green
+        "8f7131",  # Pesto brown
+        "b78d4f",  # Muddy waters brown
+        "e2b8a6",  # Rose fog pink
+        "ffffff",  # White
     ]
     return render_palette(patch[:, :, 0], palette, max=3000)
 

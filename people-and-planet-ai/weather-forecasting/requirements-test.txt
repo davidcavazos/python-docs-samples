@@ -1,4 +1,4 @@
-# Requirements to run tests.
+# Requirements to run the tests.
 apache-beam[interactive]==2.43.0
 importnb==2022.10.24
 ipykernel==6.20.0

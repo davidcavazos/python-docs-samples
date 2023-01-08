@@ -1,9 +1,10 @@
-# Requirements to run the notebook.
+# Requirements to run the notebook locally.
 apache-beam[gcp]==2.43.0
-datasets==2.8.0
-earthengine-api==0.1.335
+build==0.9.0
 folium==0.14.0
 google-cloud-aiplatform==1.20.0
-plotly==5.11.0
 torch==1.13.1
-transformers==4.25.1
+
+# Local packages.
+./serving/weather-data
+./serving/weather-model

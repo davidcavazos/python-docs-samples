@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,8 +25,10 @@ import conftest  # python-docs-samples/people-and-planet-ai/conftest.py
 
 import pytest
 
-from serving import data
-from trainer.task import WeatherModel
+from weather.data import get_inputs_patch
+from weather.model import WeatherModel
+
+MODEL_PATH = "serving/model"
 
 
 # ---------- FIXTURES ---------- #
@@ -39,15 +41,14 @@ def test_name(python_version: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def data_local_path(bucket_name: str) -> str:
-    path = "data_local"
+def data_local_path() -> str:
+    path = "data"
     conftest.run_cmd(
         "python",
         "create_dataset.py",
         f"--data-path={path}",
-        "--size=2",
-        "--num-bins=1",
-        "--num-points=1",
+        "--num-dates=1",
+        "--num-bins=2",
     )
     return path
 
@@ -59,28 +60,17 @@ def data_gcs_path(bucket_name: str, data_local_path: str) -> str:
     return gcs_path
 
 
-@pytest.fixture(scope="session")
-def model_local_path() -> str:
-    path = "local_model"
-    os.makedirs(path)
-    conftest.run_cmd("cp", os.path.join("model", "config.json"), path)
-    conftest.run_cmd("cp", os.path.join("model", "pytorch_model.bin"), path)
-    conftest.run_cmd("cp", os.path.join("model", "training_args.bin"), path)
-    return path
-
-
 # ---------- TESTS ---------- #
 
 
 def test_pretrained_model() -> None:
-    data.ee_init()
     patch_size = 16
     date = datetime(2019, 9, 3, 18)
-    inputs = data.get_inputs_patch(date, (-90.0, 25.0), patch_size)
+    inputs = get_inputs_patch(date, (-90.0, 25.0), patch_size)
 
-    model = WeatherModel.from_pretrained("model")
+    model = WeatherModel.from_pretrained(MODEL_PATH)
     assert inputs.shape == (patch_size, patch_size, 52)
-    predictions = model.predict(inputs)
+    predictions = model.predict(inputs.tolist())
     assert predictions.shape == (patch_size, patch_size, 2)
 
 
@@ -89,9 +79,8 @@ def test_weather_forecasting_notebook(
     project: str,
     bucket_name: str,
     location: str,
-    data_local_path: str,
-    data_gcs_path: str,
-    model_local_path: str,
+    # data_local_path: str,
+    # data_gcs_path: str,
 ) -> None:
 
     dataflow_dataset_flags = " ".join(
@@ -99,8 +88,8 @@ def test_weather_forecasting_notebook(
             '--runner="DataflowRunner"',
             f"--job_name={unique_name}-dataset",
             "--num-dates=1",
-            "--num-bins=1",
-            "--max-requests=1",
+            "--num-bins=2",
+            "--max-requests=2",
         ]
     )
 
@@ -108,28 +97,23 @@ def test_weather_forecasting_notebook(
         "README.ipynb",
         prelude=textwrap.dedent(
             f"""\
-            from serving.data import ee_init
-
             # Google Cloud resources.
             project = {repr(project)}
             bucket = {repr(bucket_name)}
             location = {repr(location)}
-
-            # Initialize Earth Engine.
-            ee_init()
             """
         ),
         sections={
             "# 📚 Understand the data": {},
-            "# 🗄 Create the dataset": {},
-            "# ☁️ Create the dataset in Dataflow": {
-                "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
-            },
-            "# 🧠 Train the model": {"variables": {"data_path": data_local_path}},
-            "# ☁️ Train the model in Vertex AI": {
-                "variables": {"epochs": 2}
-                # uses data_gcs_path
-            },
-            "# 🔮 Make predictions": {},  # uses model_local_path
+            # "# 🗄 Create the dataset": {},
+            # "# ☁️ Create the dataset in Dataflow": {
+            #     "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
+            # },
+            # "# 🧠 Train the model": {"variables": {"data_path": data_local_path}},
+            # "# ☁️ Train the model in Vertex AI": {
+            #     "variables": {"epochs": 2}
+            #     # uses data_gcs_path
+            # },
+            # "# 🔮 Make predictions": {"model_path": MODEL_PATH},  # uses model_local_path
         },
     )
