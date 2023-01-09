@@ -2,3 +2,5 @@
 **/build
 **/dist
 /data
+/data-sample
+/local_model

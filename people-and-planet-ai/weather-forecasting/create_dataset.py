@@ -31,7 +31,7 @@ import numpy as np
 import requests
 
 # Default values.
-NUM_DATES = 30
+NUM_DATES = 100
 MAX_REQUESTS = 20  # default EE request quota
 MIN_BATCH_SIZE = 100
 

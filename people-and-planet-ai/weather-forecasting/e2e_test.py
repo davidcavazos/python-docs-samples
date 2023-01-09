@@ -41,7 +41,7 @@ def test_name(python_version: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def data_local_path() -> str:
+def data_path_local() -> str:
     path = "data"
     conftest.run_cmd(
         "python",
@@ -54,9 +54,9 @@ def data_local_path() -> str:
 
 
 @pytest.fixture(scope="session")
-def data_gcs_path(bucket_name: str, data_local_path: str) -> str:
+def data_path_gcs(bucket_name: str, data_path_local: str) -> str:
     gcs_path = f"gs://{bucket_name}/weather/data/"
-    conftest.run_cmd("gsutil", "-m", "cp", f"{data_local_path}/*.npz", gcs_path)
+    conftest.run_cmd("gsutil", "-m", "cp", f"{data_path_local}/*.npz", gcs_path)
     return gcs_path
 
 
@@ -79,8 +79,8 @@ def test_weather_forecasting_notebook(
     project: str,
     bucket_name: str,
     location: str,
-    # data_local_path: str,
-    # data_gcs_path: str,
+    data_path_local: str,
+    data_path_gcs: str,
 ) -> None:
 
     dataflow_dataset_flags = " ".join(
@@ -105,15 +105,14 @@ def test_weather_forecasting_notebook(
         ),
         sections={
             "# 📚 Understand the data": {},
-            # "# 🗄 Create the dataset": {},
+            "# 🗄 Create the dataset": {},
             # "# ☁️ Create the dataset in Dataflow": {
             #     "replace": {'--runner="DataflowRunner"': dataflow_dataset_flags},
             # },
-            # "# 🧠 Train the model": {"variables": {"data_path": data_local_path}},
+            "# 🧠 Train the model": {"variables": {"data_path": data_path_local}},
             # "# ☁️ Train the model in Vertex AI": {
-            #     "variables": {"epochs": 2}
-            #     # uses data_gcs_path
+            #     "variables": {"data_path": data_path_gcs, "epochs": 2}
             # },
-            # "# 🔮 Make predictions": {"model_path": MODEL_PATH},  # uses model_local_path
+            "# 🔮 Make predictions": {"model_path": MODEL_PATH},  # uses model_local_path
         },
     )
