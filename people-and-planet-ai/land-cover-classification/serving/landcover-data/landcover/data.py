@@ -35,24 +35,26 @@ INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
 WINDOW = timedelta(days=1)
 
-# Authenticate and initialize Earth Engine with the default credentials.
-credentials, project = google.auth.default(
-    scopes=[
-        "https://www.googleapis.com/auth/cloud-platform",
-        "https://www.googleapis.com/auth/earthengine",
-    ]
-)
 
-# Use the Earth Engine High Volume endpoint.
-#   https://developers.google.com/earth-engine/cloud/highvolume
-ee.Initialize(
-    credentials.with_quota_project(None),
-    project=project,
-    opt_url="https://earthengine-highvolume.googleapis.com",
-)
+def ee_init(project: str = "") -> None:
+    # Authenticate and initialize Earth Engine with the default credentials.
+    credentials, default_project = google.auth.default(
+        scopes=[
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/earthengine",
+        ]
+    )
+
+    # Use the Earth Engine High Volume endpoint.
+    #   https://developers.google.com/earth-engine/cloud/highvolume
+    ee.Initialize(
+        credentials.with_quota_project(None),
+        project=project or default_project,
+        opt_url="https://earthengine-highvolume.googleapis.com",
+    )
 
 
-def get_sentinel2(year: int) -> ee.Image:
+def get_sentinel2(year: int, default_value: float = 1000.0) -> ee.Image:
     """Gets a Sentinel-2 image for the selected date.
 
     This filters clouds and returns the median for the selected time range.
@@ -82,9 +84,9 @@ def get_sentinel2(year: int) -> ee.Image:
         .filterDate(f"{year}-1-1", f"{year}-12-31")
         .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))
         .map(mask_sentinel2_clouds)
-        .select("B.*")
+        .select("B.*")  # supports regular expressions
         .median()
-        .unmask(1000)
+        .unmask(default_value)
         .float()
     )
 
@@ -123,7 +125,7 @@ def get_land_cover() -> ee.Image:
         .select("Map")
         .remap(fromValues, toValues)
         .rename("landcover")
-        .unmask(0)
+        .unmask(0)  # water
         .byte()  # as unsinged 8-bit integer
     )
 
