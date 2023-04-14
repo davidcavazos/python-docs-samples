@@ -25,8 +25,8 @@ The land cover labels for the training dataset come from the ESA WorldCover.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import List, Optional
+from collections.abc import Iterator
+import enum
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
@@ -34,14 +34,39 @@ import ee
 import numpy as np
 import requests
 
-from serving import data
+
+class DataFormat:
+    pass
+
+
+class TFRecordData(DataFormat):
+    pass
+
+
+class FeatherData(DataFormat):
+    pass
+
+
+class ParquetData(DataFormat):
+    pass
+
+
+class NumpyData(DataFormat):
+    pass
+
 
 # Default values.
-POINTS_PER_CLASS = 100
-PATCH_SIZE = 128
+NUM_POINTS = 10
 MAX_REQUESTS = 20  # default EE request quota
+DATASET_FORMAT = DatasetFormat.tfrecord.name
 
-# Simplified polygons covering most land areas in the world.
+# Constants.
+PATCH_SIZE = 5
+MAX_ELEVATION = 6000  # found empirically
+ELEVATION_BINS = 10
+LANDCOVER_CLASSES = 9
+
+# Simple polygons covering most land areas in the world.
 WORLD_POLYGONS = [
     # Americas
     [(-33.0, -7.0), (-55.0, 53.0), (-166.0, 65.0), (-68.0, -56.0)],
@@ -59,12 +84,7 @@ WORLD_POLYGONS = [
 ]
 
 
-def sample_points(
-    seed: int,
-    polygons: list[list[tuple[float, float]]],
-    points_per_class: int,
-    scale: int = 1000,
-) -> Iterable[tuple[float, float]]:
+def sample_points(seed: int, num_points: int) -> Iterator[tuple[float, float]]:
     """Selects around the same number of points for every classification.
 
     This expects the input image to be an integer, for balanced regression points
@@ -74,19 +94,25 @@ def sample_points(
 
     Args:
         seed: Random seed to make sure to get different results on different workers.
-        polygons: List of polygons to pick points from.
-        points_per_class: Number of points per classification to pick.
-        scale: Number of meters per pixel, a smaller scale will take longer.
+        num_points: Total number of points to try to get.
 
-    Returns: An iterable of the picked points.
+    Yields: Tuples of (longitude, latitude) coordinates.
     """
-    data.ee_init()
-    image = data.get_label_image()
-    region = ee.Geometry.MultiPolygon(polygons)
-    points = image.stratifiedSample(
-        points_per_class,
-        region=region,
-        scale=scale,
+    from landcover import data
+
+    land_cover = data.get_land_cover().int64()
+    elevation_bins = (
+        data.get_elevation()
+        .clamp(0, MAX_ELEVATION)
+        .divide(MAX_ELEVATION)
+        .multiply(ELEVATION_BINS - 1)
+        .int64()
+    )
+    unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
+    points = unique_bins.stratifiedSample(
+        numPoints=max(1, int(0.5 + num_points / ELEVATION_BINS / LANDCOVER_CLASSES)),
+        region=ee.Geometry.MultiPolygon(WORLD_POLYGONS),
+        scale=data.SCALE,
         seed=seed,
         geometries=True,
     )
@@ -94,32 +120,45 @@ def sample_points(
         yield point["geometry"]["coordinates"]
 
 
-def get_training_example(
-    lonlat: tuple[float, float], patch_size: int = PATCH_SIZE
-) -> tuple[np.ndarray, np.ndarray]:
-    """Gets an (inputs, labels) training example for year 2020.
+def get_example(point: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
+    """Gets an (inputs, labels) training example for the year 2020.
 
     Args:
-        lonlat: A (longitude, latitude) pair for the point of interest.
-        patch_size: Size in pixels of the surrounding square patch.
+        point: A (longitude, latitude) pair for the point of interest.
 
     Returns: An (inputs, labels) pair of NumPy arrays.
     """
-    data.ee_init()
+    from landcover import data
+
     return (
-        data.get_input_patch(2020, lonlat, patch_size),
-        data.get_label_patch(lonlat, patch_size),
+        data.get_input_patch(2020, point, PATCH_SIZE),
+        data.get_label_patch(point, PATCH_SIZE),
     )
 
 
 def try_get_example(
-    lonlat: tuple[float, float], patch_size: int = PATCH_SIZE
-) -> Iterable[tuple[np.ndarray, np.ndarray]]:
+    point: tuple[float, float]
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
     """Wrapper over `get_training_examples` that allows it to simply log errors instead of crashing."""
     try:
-        yield get_training_example(lonlat, patch_size)
-    except requests.exceptions.HTTPError as e:
+        yield get_example(point)
+    except (requests.exceptions.HTTPError, ee.ee_exception.EEException) as e:
+        logging.error(f"🛑 failed to get example: {point}")
         logging.exception(e)
+
+
+@beam.ptransform_fn
+@beam.typehints.with_input_types(tuple[np.ndarray, np.ndarray])
+@beam.typehints.with_output_types(str)
+def WriteDataset(
+    examples: beam.PCollection,
+    data_path: str,
+    dataset_format: str,
+) -> beam.PCollection:
+    if dataset_format == DatasetFormat.tfrecord:
+        return examples
+    else:
+        raise ValueError(f"Dataset format not supported: {format}")
 
 
 def serialize_tensorflow(inputs: np.ndarray, labels: np.ndarray) -> bytes:
@@ -146,13 +185,12 @@ def serialize_tensorflow(inputs: np.ndarray, labels: np.ndarray) -> bytes:
     return example.SerializeToString()
 
 
-def run_tensorflow(
+def run(
     data_path: str,
-    points_per_class: int = POINTS_PER_CLASS,
-    patch_size: int = PATCH_SIZE,
+    num_points: int = NUM_POINTS,
     max_requests: int = MAX_REQUESTS,
-    polygons: list[list[tuple[float, float]]] = WORLD_POLYGONS,
-    beam_args: Optional[List[str]] = None,
+    dataset_format: str = DATASET_FORMAT,
+    beam_args: list[str] | None = None,
 ) -> None:
     """Runs an Apache Beam pipeline to create a dataset.
 
@@ -162,15 +200,10 @@ def run_tensorflow(
 
     Args:
         data_path: Directory path to save the TFRecord files.
-        points_per_class: Number of points to get for each classification.
-        patch_size: Size in pixels of the surrounding square patch.
+        num_points: Total number of points to try to get.
         max_requests: Limit the number of concurrent requests to Earth Engine.
-        polygons: List of polygons to pick points from.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
-    # Equally divide the number of points by the number of concurrent requests.
-    num_points = max(int(points_per_class / max_requests), 1)
-
     beam_options = PipelineOptions(
         beam_args,
         save_main_session=True,
@@ -180,17 +213,20 @@ def run_tensorflow(
         disk_size_gb=50,
     )
     with beam.Pipeline(options=beam_options) as pipeline:
-        (
+        _ = (
             pipeline
             | "🌱 Make seeds" >> beam.Create(range(max_requests))
-            | "📌 Sample points" >> beam.FlatMap(sample_points, polygons, num_points)
+            | "📌 Sample points"
+            >> beam.FlatMap(sample_points, num_points / max_requests)
             | "🃏 Reshuffle" >> beam.Reshuffle()
-            | "📑 Get examples" >> beam.FlatMap(try_get_example, patch_size)
+            | "📑 Get examples" >> beam.FlatMap(try_get_example)
             | "✍🏽 Serialize" >> beam.MapTuple(serialize_tensorflow)
-            | "📚 Write TFRecords"
-            >> beam.io.WriteToTFRecord(
-                f"{data_path}/part", file_name_suffix=".tfrecord.gz"
-            )
+            # | "📚 Write TFRecords"
+            # >> beam.io.WriteToTFRecord(
+            #     f"{data_path}/part", file_name_suffix=".tfrecord.gz"
+            # )
+            | "📚 Write dataset" >> WriteDataset(data_path, dataset_format)
+            | beam.Map(print)
         )
 
 
@@ -201,23 +237,22 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("framework", choices=["tensorflow"])
     parser.add_argument(
         "--data-path",
         required=True,
         help="Directory path to save the TFRecord files.",
     )
     parser.add_argument(
-        "--points-per-class",
-        default=POINTS_PER_CLASS,
+        "--num-points",
+        default=NUM_POINTS,
         type=int,
-        help="Number of points to get for each classification.",
+        help="Total number of points to try to get.",
     )
     parser.add_argument(
-        "--patch-size",
-        default=PATCH_SIZE,
-        type=int,
-        help="Size in pixels of the surrounding square patch.",
+        "--dataset-format",
+        default=DatasetFormat.tfrecord.name,
+        choices=[value.name for value in DatasetFormat],
+        help="File format to write the dataset files to.",
     )
     parser.add_argument(
         "--max-requests",
@@ -227,13 +262,10 @@ if __name__ == "__main__":
     )
     args, beam_args = parser.parse_known_args()
 
-    if args.framework == "tensorflow":
-        run_tensorflow(
-            data_path=args.data_path,
-            points_per_class=args.points_per_class,
-            patch_size=args.patch_size,
-            max_requests=args.max_requests,
-            beam_args=beam_args,
-        )
-    else:
-        raise ValueError(f"framework not supported: {args.framework}")
+    run(
+        data_path=args.data_path,
+        num_points=args.num_points,
+        max_requests=args.max_requests,
+        dataset_format=args.dataset_format,
+        beam_args=beam_args,
+    )

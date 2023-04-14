@@ -35,23 +35,21 @@ INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
 WINDOW = timedelta(days=1)
 
+# Authenticate and initialize Earth Engine with the default credentials.
+credentials, project = google.auth.default(
+    scopes=[
+        "https://www.googleapis.com/auth/cloud-platform",
+        "https://www.googleapis.com/auth/earthengine",
+    ]
+)
 
-def ee_init(project: str = "") -> None:
-    # Authenticate and initialize Earth Engine with the default credentials.
-    credentials, default_project = google.auth.default(
-        scopes=[
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/earthengine",
-        ]
-    )
-
-    # Use the Earth Engine High Volume endpoint.
-    #   https://developers.google.com/earth-engine/cloud/highvolume
-    ee.Initialize(
-        credentials.with_quota_project(None),
-        project=project or default_project,
-        opt_url="https://earthengine-highvolume.googleapis.com",
-    )
+# Use the Earth Engine High Volume endpoint.
+#   https://developers.google.com/earth-engine/cloud/highvolume
+ee.Initialize(
+    credentials.with_quota_project(None),
+    project=project,
+    opt_url="https://earthengine-highvolume.googleapis.com",
+)
 
 
 def get_sentinel2(year: int, default_value: float = 1000.0) -> ee.Image:
@@ -126,7 +124,7 @@ def get_land_cover() -> ee.Image:
         .remap(fromValues, toValues)
         .rename("landcover")
         .unmask(0)  # water
-        .byte()  # as unsinged 8-bit integer
+        .uint8()
     )
 
 
@@ -143,7 +141,7 @@ def get_input_image(year: int) -> ee.Image:
     return ee.Image([sentinel2, elevation])
 
 
-def get_label_image(date: datetime) -> ee.Image:
+def get_label_image() -> ee.Image:
     """Gets an Earth Engine image with the labels to train the model.
 
     Args:
@@ -169,17 +167,16 @@ def get_input_patch(year: int, point: tuple, patch_size: int) -> np.ndarray:
     return structured_to_unstructured(patch)
 
 
-def get_label_patch(date: datetime, point: tuple, patch_size: int) -> np.ndarray:
+def get_label_patch(point: tuple, patch_size: int) -> np.ndarray:
     """Gets the patch of pixels for the labels.
 
     Args:
-        date: The date of interest.
         point: A (longitude, latitude) coordinate.
         patch_size: Size in pixels of the surrounding square patch.
 
     Returns: The pixel values of a patch as a NumPy array.
     """
-    image = get_label_image(date)
+    image = get_label_image()
     patch = get_patch(image, point, patch_size, SCALE)
     return structured_to_unstructured(patch)
 

@@ -17,6 +17,6 @@
 name = "landcover-data"
 version = "1.0.0"
 dependencies = [
-    "earthengine-api==0.1.345",
+    "earthengine-api==0.1.349",
     "numpy==1.24.2",
 ]
