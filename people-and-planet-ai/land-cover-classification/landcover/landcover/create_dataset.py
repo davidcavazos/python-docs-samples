@@ -27,24 +27,26 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import logging
-import uuid
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.io.filesystems import FileSystems
 from apache_beam.io.filebasedsink import FileBasedSink
-
 import ee
+import google.auth
 import numpy as np
 import requests
+from typing import NamedTuple
+
+import landcover.data
 
 
 # Default values.
-NUM_POINTS = 10  # TODO: FIND VALUE
+NUM_SAMPLES = 10  # TODO: FIND VALUE
 MAX_REQUESTS = 20  # default EE request quota
 FILE_FORMAT = "numpy"
 
 # Constants.
+SCALE = 10000  # meters per pixel
 PATCH_SIZE = 5
 MAX_ELEVATION = 6000  # found empirically
 ELEVATION_BINS = 1  # TODO: CHANGE TO 10
@@ -68,7 +70,30 @@ WORLD_POLYGONS = [
 ]
 
 
-def sample_points(seed: int, num_points: int) -> Iterator[tuple[float, float]]:
+class DoFnEE(beam.DoFn):
+    """Base DoFn for Earth Engine transforms.
+
+    Initializes Earth Engine once per worker.
+    """
+
+    def setup(self) -> None:
+        # Get the default credentials to authenticate to Earth Engine.
+        credentials, project = google.auth.default(
+            scopes=[
+                "https://www.googleapis.com/auth/cloud-platform",
+                "https://www.googleapis.com/auth/earthengine",
+            ]
+        )
+        # Use the Earth Engine High Volume endpoint.
+        #   https://developers.google.com/earth-engine/cloud/highvolume
+        ee.Initialize(
+            credentials.with_quota_project(None),
+            project=project,
+            opt_url="https://earthengine-highvolume.googleapis.com",
+        )
+
+
+class SamplePoints(DoFnEE):
     """Selects around the same number of points for every classification.
 
     This expects the input image to be an integer, for balanced regression points
@@ -76,32 +101,104 @@ def sample_points(seed: int, num_points: int) -> Iterator[tuple[float, float]]:
     If the values are too large, it might be good to bucketize, for example
     the range is between 0 and ~1000 `image.divide(100).int()` would give ~10 buckets.
 
-    Args:
+    Attributes:
         seed: Random seed to make sure to get different results on different workers.
         num_points: Total number of points to try to get.
 
     Yields: Tuples of (longitude, latitude) coordinates.
     """
-    from landcover.data import get_elevation, get_land_cover_2020, SCALE
 
-    land_cover = get_land_cover_2020().int64()
-    elevation_bins = (
-        get_elevation()
-        .clamp(0, MAX_ELEVATION)
-        .divide(MAX_ELEVATION)
-        .multiply(ELEVATION_BINS - 1)
-        .int64()
-    )
-    unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
-    points = unique_bins.stratifiedSample(
-        numPoints=max(1, int(0.5 + num_points / ELEVATION_BINS / LANDCOVER_CLASSES)),
-        region=ee.Geometry.MultiPolygon(WORLD_POLYGONS),
-        scale=SCALE,
-        seed=seed,
-        geometries=True,
-    )
-    for point in points.toList(points.size()).getInfo():
-        yield point["geometry"]["coordinates"]
+    def __init__(self, num_samples: int) -> None:
+        self.num_samples = num_samples
+
+    def process(self, seed: int) -> Iterator[tuple[float, float]]:
+        land_cover = landcover.data.get_land_cover_2020().uint8()
+        elevation_bins = (
+            landcover.data.get_elevation()
+            .clamp(0, MAX_ELEVATION)
+            .divide(MAX_ELEVATION)
+            .multiply(ELEVATION_BINS - 1)
+            .uint8()
+        )
+        num_points = int(0.5 + self.num_samples / ELEVATION_BINS / LANDCOVER_CLASSES)
+        unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
+        points = unique_bins.stratifiedSample(
+            numPoints=max(1, num_points),
+            region=ee.Geometry.MultiPolygon(WORLD_POLYGONS),
+            scale=SCALE,
+            seed=seed,
+            geometries=True,
+        )
+        for point in points.toList(points.size()).getInfo():
+            yield point["geometry"]["coordinates"]
+
+
+class GetPatch(DoFnEE):
+    pass
+
+
+class GetPatch(beam.DoFn):
+    def __init__(self, patch_size: int = 128) -> None:
+        self.patch_size = patch_size
+
+    def setup(self) -> None:
+        credentials, project = google.auth.default(
+            scopes=[
+                "https://www.googleapis.com/auth/cloud-platform",
+                "https://www.googleapis.com/auth/earthengine",
+            ]
+        )
+        # Use the Earth Engine High Volume endpoint.
+        #   https://developers.google.com/earth-engine/cloud/highvolume
+        ee.Initialize(
+            credentials.with_quota_project(None),
+            project=project,
+            opt_url="https://earthengine-highvolume.googleapis.com",
+        )
+
+    def process(self, request: tuple[list[float], list[dict]]) -> Iterator[np.ndarray]:
+        (coords, points) = request
+        image = get_image(points)
+        yield download_patch(coords, image, SCALE, self.patch_size)
+
+
+@retry.Retry()
+def download_patch(
+    coords: tuple[float, float],
+    image: ee.Image,
+    scale: int,
+    patch_size: int,
+) -> np.ndarray:
+    """Get a training patch centered on the coordinates."""
+    point = ee.Geometry.Point(coords)
+    # Make a projection to discover the scale in degrees.
+    # NOTE: Pass this in so it doesn't get computed every time.
+    proj = ee.Projection("EPSG:4326").atScale(scale).getInfo()
+
+    # Get scales out of the transform.
+    scale_x = proj["transform"][0]
+    scale_y = -proj["transform"][4]
+    offset_x = -scale_x * (patch_size + 1) / 2
+    offset_y = -scale_y * patch_size / 2
+
+    # Make a request object.
+    request = {
+        "expression": image,
+        "fileFormat": "NPY",
+        "grid": {
+            "dimensions": {"width": patch_size, "height": patch_size},
+            "affineTransform": {
+                "scaleX": scale_x,
+                "shearX": 0,
+                "translateX": coords[0] + offset_x,
+                "shearY": 0,
+                "scaleY": scale_y,
+                "translateY": coords[1] + offset_y,
+            },
+            "crsCode": proj["crs"],
+        },
+    }
+    return np.load(io.BytesIO(ee.data.computePixels(request)))
 
 
 def get_example(point: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
@@ -112,11 +209,11 @@ def get_example(point: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
 
     Returns: An (inputs, labels) pair of NumPy arrays.
     """
-    from landcover.data import get_input_image, get_label_image, get_patch, SCALE
-
+    input_image = landcover.data.get_input_image(2020)
+    label_image = landcover.data.get_label_image()
     return (
-        get_patch(get_input_image(2020), point, PATCH_SIZE, SCALE),
-        get_patch(get_label_image(), point, PATCH_SIZE, SCALE),
+        landcover.data.get_patch(input_image, point, PATCH_SIZE, SCALE),
+        landcover.data.get_patch(label_image, point, PATCH_SIZE, SCALE),
     )
 
 
@@ -164,25 +261,21 @@ class NumpySink(FileBasedSink):
         self.examples.append(example)
 
     def close(self, file_handle):
-        inputs = [x for (x, _) in self.examples]
-        labels = [y for (_, y) in self.examples]
+        inputs = [x for x, _ in self.examples]
+        labels = [y for _, y in self.examples]
         np.savez_compressed(file_handle, inputs=inputs, labels=labels)
         return super().close(file_handle)
 
 
 @beam.ptransform_fn
-def WriteToNumpy(examples: beam.PCollection, data_path: str) -> beam.PCollection:
-    return examples | beam.io.Write(NumpySink(data_path))
-
-
-def run(
+def CreateDataset(
+    pcollection: beam.PCollection[int],
     data_path: str,
-    num_points: int = NUM_POINTS,
+    num_samples: int = NUM_SAMPLES,
     max_requests: int = MAX_REQUESTS,
     file_format: str = FILE_FORMAT,
-    beam_args: list[str] | None = None,
-) -> None:
-    """Runs an Apache Beam pipeline to create a dataset.
+) -> beam.PCollection[str]:
+    """Creates an Apache Beam pipeline to create a dataset.
 
     This fetches data from Earth Engine and creates a TFRecords dataset.
     We use `max_requests` to limit the number of concurrent requests to Earth Engine
@@ -195,30 +288,19 @@ def run(
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
 
-    beam_options = PipelineOptions(
-        beam_args,
-        save_main_session=True,
-        max_num_workers=max_requests,  # distributed runners
-        direct_num_workers=max_requests,  # direct runner
-        direct_running_mode="multi_threading",
-        # disk_size_gb=50,
+    examples = (
+        pcollection
+        | "📌 Sample points" >> beam.FlatMap(sample_points, num_samples / max_requests)
+        | "🃏 Reshuffle" >> beam.Reshuffle()
+        | "📑 Get examples" >> beam.FlatMap(try_get_example)
     )
 
-    with beam.Pipeline(options=beam_options) as pipeline:
-        examples = (
-            pipeline
-            | "🌱 Make seeds" >> beam.Create(range(max_requests))
-            | "📌 Sample points"
-            >> beam.FlatMap(sample_points, num_points / max_requests)
-            | "🃏 Reshuffle" >> beam.Reshuffle()
-            | "📑 Get examples" >> beam.FlatMap(try_get_example)
-        )
+    match file_format:
+        case "numpy":
+            return examples | "📚 Write NumPy" >> beam.io.Write(NumpySink(data_path))
 
-        if file_format == "numpy":
-            filenames = examples | "📚 Write NumPy" >> WriteToNumpy(data_path)
-
-        elif file_format == "tfrecord":
-            filenames = (
+        case "tfrecord":
+            return (
                 examples
                 | "✍️ TFExample serialize" >> beam.MapTuple(serialize_to_tfexample)
                 | "📚 Write TFRecords"
@@ -227,16 +309,14 @@ def run(
                 )
             )
 
-        elif file_format == "feather":
-            raise NotImplementedError(f"file_format: {file_format}")
+        case "torch":
+            raise NotImplementedError("--file-format=torch")
 
-        elif file_format == "parquet":
-            raise NotImplementedError(f"file_format: {file_format}")
+        case "safetensors":
+            raise NotImplementedError("--file-format=safetensors")
 
-        else:
+        case file_format:
             raise ValueError(f"File format not supported: {file_format}")
-
-        _ = filenames | beam.Map(print)
 
 
 def __main__():
@@ -249,15 +329,15 @@ def __main__():
         help="Directory path to save the TFRecord files.",
     )
     parser.add_argument(
-        "--num-points",
-        default=NUM_POINTS,
+        "--num-samples",
+        default=NUM_SAMPLES,
         type=int,
-        help="Total number of points to try to get.",
+        help="Total number of points to sample.",
     )
     parser.add_argument(
         "--file-format",
         default=FILE_FORMAT,
-        choices=["numpy", "feather", "parquet", "tfrecord"],
+        choices=["numpy", "tfrecord", "torch", "safetensor"],
         help="File format to write the dataset files to.",
     )
     parser.add_argument(
@@ -276,13 +356,27 @@ def __main__():
 
     logging.getLogger().setLevel(logging.getLevelName(args.logging))
 
-    run(
-        data_path=args.data_path,
-        num_points=args.num_points,
-        max_requests=args.max_requests,
-        file_format=args.file_format,
-        beam_args=beam_args,
+    beam_options = PipelineOptions(
+        beam_args,
+        save_main_session=True,
+        pickle_library="cloudpickle",
+        direct_num_workers=20,  # direct runner
+        direct_running_mode="multi_threading",
     )
+
+    with beam.Pipeline(options=beam_options) as pipeline:
+        _ = (
+            pipeline
+            | "🌱 Make seeds" >> beam.Create(range(args.max_requests))
+            | "🗄️ Create dataset"
+            >> CreateDataset(
+                data_path=args.data_path,
+                num_samples=args.num_samples,
+                max_requests=args.max_requests,
+                file_format=args.file_format,
+            )
+            | beam.Map(print)
+        )
 
 
 if __name__ == "__main__":
