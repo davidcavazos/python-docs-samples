@@ -26,9 +26,13 @@ The land cover labels for the training dataset come from the ESA WorldCover.
 from __future__ import annotations
 
 from collections.abc import Iterator
+import logging
+import uuid
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.io.filesystems import FileSystems
+from apache_beam.io.filebasedsink import FileBasedSink
 
 import ee
 import numpy as np
@@ -36,14 +40,14 @@ import requests
 
 
 # Default values.
-NUM_POINTS = 10
+NUM_POINTS = 10  # TODO: FIND VALUE
 MAX_REQUESTS = 20  # default EE request quota
 FILE_FORMAT = "numpy"
 
 # Constants.
 PATCH_SIZE = 5
 MAX_ELEVATION = 6000  # found empirically
-ELEVATION_BINS = 10
+ELEVATION_BINS = 1  # TODO: CHANGE TO 10
 LANDCOVER_CLASSES = 9
 
 # Simple polygons covering most land areas in the world.
@@ -127,7 +131,7 @@ def try_get_example(
         logging.exception(e)
 
 
-def tfrecord_serialize(inputs: np.ndarray, labels: np.ndarray) -> bytes:
+def serialize_to_tfexample(inputs: np.ndarray, labels: np.ndarray) -> bytes:
     """Serializes inputs and labels NumPy arrays as a tf.Example.
 
     Both inputs and outputs are expected to be dense tensors, not dictionaries.
@@ -151,6 +155,26 @@ def tfrecord_serialize(inputs: np.ndarray, labels: np.ndarray) -> bytes:
     return example.SerializeToString()
 
 
+class NumpySink(FileBasedSink):
+    def __init__(self, data_path: str) -> None:
+        super().__init__(f"{data_path}/part", coder=None, file_name_suffix=".npz")
+        self.examples = []
+
+    def write_record(self, file_handle, example: tuple[np.ndarray, np.ndarray]):
+        self.examples.append(example)
+
+    def close(self, file_handle):
+        inputs = [x for (x, _) in self.examples]
+        labels = [y for (_, y) in self.examples]
+        np.savez_compressed(file_handle, inputs=inputs, labels=labels)
+        return super().close(file_handle)
+
+
+@beam.ptransform_fn
+def WriteToNumpy(examples: beam.PCollection, data_path: str) -> beam.PCollection:
+    return examples | beam.io.Write(NumpySink(data_path))
+
+
 def run(
     data_path: str,
     num_points: int = NUM_POINTS,
@@ -170,13 +194,16 @@ def run(
         max_requests: Limit the number of concurrent requests to Earth Engine.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
+
     beam_options = PipelineOptions(
         beam_args,
         save_main_session=True,
         max_num_workers=max_requests,  # distributed runners
         direct_num_workers=max_requests,  # direct runner
+        direct_running_mode="multi_threading",
         # disk_size_gb=50,
     )
+
     with beam.Pipeline(options=beam_options) as pipeline:
         examples = (
             pipeline
@@ -187,24 +214,33 @@ def run(
             | "📑 Get examples" >> beam.FlatMap(try_get_example)
         )
 
-        if file_format == "tfrecord":
-            _ = (
+        if file_format == "numpy":
+            filenames = examples | "📚 Write NumPy" >> WriteToNumpy(data_path)
+
+        elif file_format == "tfrecord":
+            filenames = (
                 examples
-                | "✍️ TFRecord serialize" >> beam.MapTuple(tfrecord_serialize)
+                | "✍️ TFExample serialize" >> beam.MapTuple(serialize_to_tfexample)
                 | "📚 Write TFRecords"
                 >> beam.io.WriteToTFRecord(
                     f"{data_path}/part", file_name_suffix=".tfrecord.gz"
                 )
             )
+
+        elif file_format == "feather":
+            raise NotImplementedError(f"file_format: {file_format}")
+
+        elif file_format == "parquet":
+            raise NotImplementedError(f"file_format: {file_format}")
+
         else:
             raise ValueError(f"File format not supported: {file_format}")
 
+        _ = filenames | beam.Map(print)
 
-if __name__ == "__main__":
+
+def __main__():
     import argparse
-    import logging
-
-    logging.getLogger().setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -230,7 +266,15 @@ if __name__ == "__main__":
         type=int,
         help="Limit the number of concurrent requests to Earth Engine.",
     )
+    parser.add_argument(
+        "--logging",
+        default="WARNING",
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"],
+        help="Logging level.",
+    )
     args, beam_args = parser.parse_known_args()
+
+    logging.getLogger().setLevel(logging.getLevelName(args.logging))
 
     run(
         data_path=args.data_path,
@@ -239,3 +283,7 @@ if __name__ == "__main__":
         file_format=args.file_format,
         beam_args=beam_args,
     )
+
+
+if __name__ == "__main__":
+    __main__()

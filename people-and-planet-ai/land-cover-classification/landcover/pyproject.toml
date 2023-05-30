@@ -17,14 +17,19 @@
 name = "landcover"
 version = "1.0.0"
 dependencies = [
-    "numpy>=1.23"
+    "numpy==1.24.3"
 ]
 
 [project.optional-dependencies]
-dataset = ["apache-beam[gcp]==2.46.0"]
-tfrecord = ["tensorflow==2.12.0"]
-parquet = []
-feather = []
+dataset = [
+    "apache-beam[gcp]==2.47.0",
+    "earthengine-api==0.1.353"
+]
+tensorflow = [
+    "tensorflow==2.12.0",
+    "python-snappy==0.6.1"
+]
+safetensors = []
 
 [project.scripts]
-landcover-create-dataset = "landcover.dataset.pipeline:run"
+landcover-create-dataset = "landcover.create_dataset:__main__"
