@@ -22,32 +22,12 @@ from __future__ import annotations
 import io
 
 import ee
-from google.api_core import exceptions, retry
-import google.auth
+from google.api_core import retry
 import numpy as np
-from numpy.lib.recfunctions import structured_to_unstructured
-import requests
 
 # Constants.
 INPUT_HOUR_DELTAS = [-4, -2, 0]
 OUTPUT_HOUR_DELTAS = [2, 6]
-
-
-# Authenticate and initialize Earth Engine with the default credentials.
-credentials, project = google.auth.default(
-    scopes=[
-        "https://www.googleapis.com/auth/cloud-platform",
-        "https://www.googleapis.com/auth/earthengine",
-    ]
-)
-
-# Use the Earth Engine High Volume endpoint.
-#   https://developers.google.com/earth-engine/cloud/highvolume
-ee.Initialize(
-    credentials.with_quota_project(None),
-    project=project,
-    opt_url="https://earthengine-highvolume.googleapis.com",
-)
 
 
 def get_sentinel2(year: int, default_value: float = 1000.0) -> ee.Image:
@@ -100,18 +80,31 @@ def get_elevation() -> ee.Image:
     return ee.Image("MERIT/DEM/v1_0_3").rename("elevation").unmask(0).float()
 
 
-def get_land_cover_2020() -> ee.Image:
-    """Get the European Space Agency WorldCover image.
+def get_input_image(year: int) -> ee.Image:
+    """Gets an Earth Engine image with all the inputs for the model.
 
+    Args:
+        year: Year to calculate the median composite.
+
+    Returns: An Earth Engine image with the model inputs.
+    """
+    sentinel2 = get_sentinel2(year)
+    elevation = get_elevation()
+    return ee.Image.cat([sentinel2, elevation])
+
+
+def get_label_image() -> ee.Image:
+    """Gets an Earth Engine image with the labels to train the model.
+
+    The labels come from the European Space Agency WorldCover dataset.
     This remaps the ESA classifications with the Dynamic World classifications.
-
     Missing values are filled with 0, which corresponds to the 'water' classification.
 
     For more information, see:
         https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v100
         https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1
 
-    Returns: An Earth Engine image with land cover classification as indices.
+    Returns: An Earth Engine image with the model labels.
     """
     # Remap the ESA classifications into the Dynamic World classifications
     fromValues = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
@@ -126,32 +119,43 @@ def get_land_cover_2020() -> ee.Image:
     )
 
 
-def get_input_image(year: int) -> ee.Image:
-    """Gets an Earth Engine image with all the inputs for the model.
-
-    Args:
-        year: Year to calculate the median composite.
-
-    Returns: An Earth Engine image.
-    """
-    sentinel2 = get_sentinel2(year)
-    elevation = get_elevation()
-    return ee.Image([sentinel2, elevation])
-
-
-def get_label_image() -> ee.Image:
+def get_example_image() -> ee.Image:
     """Gets an Earth Engine image with the labels to train the model.
 
-    Args:
-        date: Date to take a snapshot from.
+    The labels come from the European Space Agency WorldCover dataset.
+    This remaps the ESA classifications with the Dynamic World classifications.
+    Missing values are filled with 0, which corresponds to the 'water' classification.
 
-    Returns: An Earth Engine image.
+    For more information, see:
+        https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v100
+        https://developers.google.com/earth-engine/datasets/catalog/GOOGLE_DYNAMICWORLD_V1
+
+    Returns: An Earth Engine image with the model labels.
     """
-    return get_land_cover_2020()
+    input_image = get_input_image(2020)
+
+    # Remap the ESA classifications into the Dynamic World classifications
+    fromValues = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
+    toValues = [1, 5, 2, 4, 6, 7, 8, 0, 3, 3, 7]
+    label_image = (
+        ee.Image("ESA/WorldCover/v100/2020")
+        .select("Map")
+        .remap(fromValues, toValues)
+        .rename("landcover")
+        .unmask(0)  # water
+        .uint8()
+    )
+    return ee.Image.cat([input_image, label_image])
 
 
 @retry.Retry()
-def get_patch(image: ee.Image, point: tuple, patch_size: int, scale: int) -> np.ndarray:
+def get_patch(
+    point: tuple[float, float],
+    image: ee.Image,
+    patch_size: int,
+    crs_code: str,
+    crs_scale: tuple[float, float],
+) -> np.ndarray:
     """Fetches a patch of pixels from Earth Engine.
 
     It retries if we get error "429: Too Many Requests".
@@ -162,29 +166,29 @@ def get_patch(image: ee.Image, point: tuple, patch_size: int, scale: int) -> np.
         patch_size: Size in pixels of the surrounding square patch.
         scale: Number of meters per pixel.
 
-    Raises:
-        requests.exceptions.RequestException
-
     Returns:
         The requested patch of pixels as a structured
         NumPy array with shape (width, height).
     """
-    geometry = ee.Geometry.Point(point)
-    url = image.getDownloadURL(
-        {
-            "region": geometry.buffer(scale * patch_size / 2, 1).bounds(1),
-            "dimensions": [patch_size, patch_size],
-            "format": "NPY",
-        }
-    )
+    (lon, lat) = point
+    (scale_x, scale_y) = crs_scale
+    offset_x = -scale_x * (patch_size + 1) / 2
+    offset_y = -scale_y * patch_size / 2
 
-    # If we get "429: Too Many Requests" errors, it's safe to retry the request.
-    # The Retry library only works with `google.api_core` exceptions.
-    response = requests.get(url)
-    if response.status_code == 429:
-        raise exceptions.TooManyRequests(response.text)
-
-    # Still raise any other exceptions to make sure we got valid data.
-    response.raise_for_status()
-    struct_array = np.load(io.BytesIO(response.content), allow_pickle=True)
-    return structured_to_unstructured(struct_array)
+    request = {
+        "expression": image,
+        "fileFormat": "NPY",
+        "grid": {
+            "dimensions": {"width": patch_size, "height": patch_size},
+            "crsCode": crs_code,
+            "affineTransform": {
+                "scaleX": scale_x,
+                "scaleY": scale_y,
+                "shearX": 0,
+                "shearY": 0,
+                "translateX": lon + offset_x,
+                "translateY": lat + offset_y,
+            },
+        },
+    }
+    return np.load(io.BytesIO(ee.data.computePixels(request)))
