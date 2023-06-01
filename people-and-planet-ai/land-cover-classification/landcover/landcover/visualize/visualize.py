@@ -38,8 +38,10 @@ def render_rgb_images(
     return rgb_values.astype(np.uint8)
 
 
-def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray:
-    """Renders a classifications NumPy array with shape (width, height, 1) as an image.
+def render_palette(
+    values: np.ndarray, palette: list[str], min: float = 0.0, max: float = 1.0
+) -> np.ndarray:
+    """Renders a NumPy array with shape (width, height, 1) as an image with a palette.
 
     Args:
         values: An uint8 array with shape (width, height, 1).
@@ -54,17 +56,18 @@ def render_classifications(values: np.ndarray, palette: list[str]) -> np.ndarray
     red = np.interp(xs, indices, [int(c[0:2], 16) for c in palette])
     green = np.interp(xs, indices, [int(c[2:4], 16) for c in palette])
     blue = np.interp(xs, indices, [int(c[4:6], 16) for c in palette])
-
     color_map = np.array([red, green, blue]).astype(np.uint8).transpose()
-    color_indices = (values / len(palette) * 255).astype(np.uint8)
+
+    scaled_values = (values - min) / (max - min)
+    color_indices = (scaled_values.clip(0, 1) * 255).astype(np.uint8)
     return np.take(color_map, color_indices, axis=0)
 
 
 def render_sentinel2(patch: np.ndarray, max: float = 3000) -> np.ndarray:
     """Renders a Sentinel 2 image."""
-    red = patch[:, :, 3]  # B4
-    green = patch[:, :, 2]  # B3
-    blue = patch[:, :, 1]  # B2
+    red = patch["B4"]
+    green = patch["B3"]
+    blue = patch["B2"]
     rgb_patch = np.stack([red, green, blue], axis=-1)
     return render_rgb_images(rgb_patch, 0, max)
 
@@ -72,28 +75,46 @@ def render_sentinel2(patch: np.ndarray, max: float = 3000) -> np.ndarray:
 def render_landcover(patch: np.ndarray) -> np.ndarray:
     """Renders a land cover image."""
     palette = list(landcover.data.LANDCOVER_CLASSES.values())
-    return render_classifications(patch[:, :, 0], palette)
+    return render_palette(patch["landcover"], palette, max=len(palette))
 
 
-def show_inputs(inputs: np.ndarray, max: float = 3000) -> None:
+def render_elevation(patch: np.ndarray) -> np.ndarray:
+    palette = [
+        "000000",  # Black
+        "478fcd",  # Shakespeare blue
+        "86c58e",  # De York green
+        "afc35e",  # Celery green
+        "8f7131",  # Pesto brown
+        "b78d4f",  # Muddy waters brown
+        "e2b8a6",  # Rose fog pink
+        "ffffff",  # White
+    ]
+    return render_palette(patch["elevation"], palette, max=3000)
+
+
+def show_inputs(patch: np.ndarray, max: float = 3000) -> None:
     """Shows the input data as an image."""
-    fig = make_subplots(rows=1, cols=1, subplot_titles=("Sentinel 2"))
-    fig.add_trace(Image(z=render_sentinel2(inputs, max)), row=1, col=1)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Sentinel 2", "Elevation"))
+    fig.add_trace(Image(z=render_sentinel2(patch, max)), row=1, col=1)
+    fig.add_trace(Image(z=render_elevation(patch)), row=1, col=2)
     fig.show()
 
 
-def show_outputs(outputs: np.ndarray) -> None:
-    """Shows the outputs/labels data as an image."""
+def show_labels(patch: np.ndarray) -> None:
+    """Shows the labels data as an image."""
     fig = make_subplots(rows=1, cols=1, subplot_titles=("Land cover",))
-    fig.add_trace(Image(z=render_landcover(outputs)), row=1, col=1)
+    fig.add_trace(Image(z=render_landcover(patch)), row=1, col=1)
     fig.show()
 
 
-def show_example(inputs: np.ndarray, labels: np.ndarray, max: float = 3000) -> None:
+def show_example(patch: np.ndarray, max: float = 3000) -> None:
     """Shows an example of inputs and labels an image."""
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Sentinel 2", "Land cover"))
-    fig.add_trace(Image(z=render_sentinel2(inputs, max)), row=1, col=1)
-    fig.add_trace(Image(z=render_landcover(labels)), row=1, col=2)
+    fig = make_subplots(
+        rows=1, cols=3, subplot_titles=("Sentinel 2", "Elevation", "Land cover")
+    )
+    fig.add_trace(Image(z=render_sentinel2(patch, max)), row=1, col=1)
+    fig.add_trace(Image(z=render_elevation(patch)), row=1, col=2)
+    fig.add_trace(Image(z=render_landcover(patch)), row=1, col=3)
     fig.show()
 
 
