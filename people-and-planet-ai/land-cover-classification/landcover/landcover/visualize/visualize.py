@@ -12,25 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: MOVE THIS INTO THE `landcover` PACKAGE
-
 from __future__ import annotations
 
 import numpy as np
 from plotly.graph_objects import Image
 from plotly.subplots import make_subplots
 
-CLASSIFICATIONS = {
-    "💧 Water": "419BDF",
-    "🌳 Trees": "397D49",
-    "🌾 Grass": "88B053",
-    "🌿 Flooded vegetation": "7A87C6",
-    "🚜 Crops": "E49635",
-    "🪴 Shrub and scrub": "DFC35A",
-    "🏗️ Built-up areas": "C4281B",
-    "🪨 Bare ground": "A59B8F",
-    "❄️ Snow and ice": "B39FE1",
-}
+import landcover.data
 
 
 def render_rgb_images(
@@ -83,7 +71,7 @@ def render_sentinel2(patch: np.ndarray, max: float = 3000) -> np.ndarray:
 
 def render_landcover(patch: np.ndarray) -> np.ndarray:
     """Renders a land cover image."""
-    palette = list(CLASSIFICATIONS.values())
+    palette = list(landcover.data.LANDCOVER_CLASSES.values())
     return render_classifications(patch[:, :, 0], palette)
 
 
@@ -116,7 +104,7 @@ def show_legend() -> None:
         return f"\033[48;2;{red};{green};{blue}m"
 
     reset_color = "\u001b[0m"
-    for name, color in CLASSIFICATIONS.items():
+    for name, color in landcover.data.LANDCOVER_CLASSES.items():
         red = int(color[0:2], 16)
         green = int(color[2:4], 16)
         blue = int(color[4:6], 16)

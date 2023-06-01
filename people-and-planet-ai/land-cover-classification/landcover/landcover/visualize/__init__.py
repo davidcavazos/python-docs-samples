@@ -12,19 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# https://peps.python.org/pep-0621
-[project]
-name = "landcover"
-version = "1.0.0"
-dependencies = ["numpy==1.24.3"]
-
-[project.optional-dependencies]
-data = ["earthengine-api==0.1.354"]
-tensorflow = ["tensorflow==2.13.0rc0"]
-torch = ["torch==2.0.1"]
-safetensors = ["safetensors==0.3.1"]
-visualize = ["plotly==5.14.1", "landcover[data]"]
-all = ["landcover[data,tensorflow,torch,safetensors,visualize]"]
-
-# [project.scripts]
-# landcover-create-dataset = "landcover.create_dataset:__main__"
+from .visualize import *

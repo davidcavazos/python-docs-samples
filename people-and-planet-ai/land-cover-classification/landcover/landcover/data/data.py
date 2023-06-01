@@ -229,7 +229,8 @@ def get_patch(
         image: Image to get the patch from.
         point: A (longitude, latitude) pair for the point of interest.
         patch_size: Size in pixels of the surrounding square patch.
-        scale: Number of meters per pixel.
+        crs: Coordinate Reference System code.
+        crs_scale: Pair of (scale_x, scale_y) transform for the CRS.
 
     Returns: A NumPy structured array with shape (width, height).
     """
