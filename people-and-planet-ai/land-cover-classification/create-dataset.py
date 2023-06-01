@@ -97,7 +97,7 @@ class GetExample(DoFnEE):
     def __init__(self, patch_size: int) -> None:
         self.patch_size = patch_size
         self.image = None
-        self.crs = "EPSG:4326"  # https://epsg.io/3857
+        self.crs = "EPSG:4326"  # https://epsg.io/4326
         self.crs_scale = None
 
     def setup(self) -> None:
