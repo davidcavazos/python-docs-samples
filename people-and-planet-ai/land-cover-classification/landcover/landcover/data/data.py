@@ -29,7 +29,17 @@ import numpy as np
 # Constants.
 MAX_ELEVATION = 6000  # found empirically
 ELEVATION_BINS = 1  # TODO: CHANGE TO 10
-LANDCOVER_CLASSES = 9
+LANDCOVER_CLASSES = {
+    "💧 Water": "419BDF",
+    "🌳 Trees": "397D49",
+    "🌾 Grass": "88B053",
+    "🌿 Flooded vegetation": "7A87C6",
+    "🚜 Crops": "E49635",
+    "🪴 Shrub and scrub": "DFC35A",
+    "🏗️ Built-up areas": "C4281B",
+    "🪨 Bare ground": "A59B8F",
+    "❄️ Snow and ice": "B39FE1",
+}
 
 # Simple polygons covering most land areas in the world.
 WORLD_POLYGONS = [
@@ -163,7 +173,7 @@ def sample_points(
         .multiply(ELEVATION_BINS - 1)
         .uint8()
     )
-    num_points = int(0.5 + num_samples / ELEVATION_BINS / LANDCOVER_CLASSES)
+    num_points = int(0.5 + num_samples / ELEVATION_BINS / len(LANDCOVER_CLASSES))
     unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
     points = unique_bins.stratifiedSample(
         numPoints=max(1, num_points),
