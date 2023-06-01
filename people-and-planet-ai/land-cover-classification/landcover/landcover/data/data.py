@@ -19,6 +19,7 @@ trained on exactly the same data that will be used for predictions.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import io
 
 import ee
@@ -26,8 +27,26 @@ from google.api_core import retry
 import numpy as np
 
 # Constants.
-INPUT_HOUR_DELTAS = [-4, -2, 0]
-OUTPUT_HOUR_DELTAS = [2, 6]
+MAX_ELEVATION = 6000  # found empirically
+ELEVATION_BINS = 1  # TODO: CHANGE TO 10
+LANDCOVER_CLASSES = 9
+
+# Simple polygons covering most land areas in the world.
+WORLD_POLYGONS = [
+    # Americas
+    [(-33.0, -7.0), (-55.0, 53.0), (-166.0, 65.0), (-68.0, -56.0)],
+    # Africa, Asia, Europe
+    [
+        (74.0, 71.0),
+        (166.0, 55.0),
+        (115.0, -11.0),
+        (74.0, -4.0),
+        (20.0, -38.0),
+        (-29.0, 25.0),
+    ],
+    # Australia
+    [(170.0, -47.0), (179.0, -37.0), (167.0, -12.0), (128.0, 17.0), (106.0, -29.0)],
+]
 
 
 def get_sentinel2(year: int, default_value: float = 1000.0) -> ee.Image:
@@ -119,6 +138,44 @@ def get_label_image() -> ee.Image:
     )
 
 
+def sample_points(
+    seed: int, num_samples: int, scale: int
+) -> Iterator[tuple[float, float]]:
+    """Selects around the same number of points for every classification.
+
+    This expects the input image to be an integer, for balanced regression points
+    you could do `image.int()` to truncate the values into an integer.
+    If the values are too large, it might be good to bucketize, for example
+    the range is between 0 and ~1000 `image.divide(100).int()` would give ~10 buckets.
+
+    Args:
+        seed: Random seed to make sure to get different results on different workers.
+        num_samples: Total number of points to sample for each bin.
+        scale: Number of meters per pixel.
+
+    Yields: Tuples of (longitude, latitude) coordinates.
+    """
+    land_cover = get_label_image().select("landcover")
+    elevation_bins = (
+        get_elevation()
+        .clamp(0, MAX_ELEVATION)
+        .divide(MAX_ELEVATION)
+        .multiply(ELEVATION_BINS - 1)
+        .uint8()
+    )
+    num_points = int(0.5 + num_samples / ELEVATION_BINS / LANDCOVER_CLASSES)
+    unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
+    points = unique_bins.stratifiedSample(
+        numPoints=max(1, num_points),
+        region=ee.Geometry.MultiPolygon(WORLD_POLYGONS),
+        scale=scale,
+        seed=seed,
+        geometries=True,
+    )
+    for point in points.toList(points.size()).getInfo():
+        yield point["geometry"]["coordinates"]
+
+
 def get_example_image() -> ee.Image:
     """Gets an Earth Engine image with the labels to train the model.
 
@@ -148,6 +205,11 @@ def get_example_image() -> ee.Image:
     return ee.Image.cat([input_image, label_image])
 
 
+def get_crs_scale(crs: str, scale: int) -> tuple[float, float]:
+    proj = ee.Projection(crs).atScale(scale).getInfo()
+    return (proj["transform"][0], proj["transform"][4])
+
+
 @retry.Retry()
 def get_patch(
     point: tuple[float, float],
@@ -164,7 +226,8 @@ def get_patch(
         image: Image to get the patch from.
         point: A (longitude, latitude) pair for the point of interest.
         patch_size: Size in pixels of the surrounding square patch.
-        scale: Number of meters per pixel.
+        crs: Coordinate Reference System code.
+        crs_scale: Pair of (scale_x, scale_y) for the CRS transform.
 
     Returns:
         The requested patch of pixels as a structured
