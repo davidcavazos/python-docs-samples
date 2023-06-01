@@ -28,7 +28,7 @@ import numpy as np
 
 # Constants.
 MAX_ELEVATION = 6000  # found empirically
-ELEVATION_BINS = 1  # TODO: CHANGE TO 10
+ELEVATION_BINS = 10
 LANDCOVER_CLASSES = {
     "💧 Water": "419BDF",
     "🌳 Trees": "397D49",
@@ -41,7 +41,7 @@ LANDCOVER_CLASSES = {
     "❄️ Snow and ice": "B39FE1",
 }
 
-# Simple polygons covering most land areas in the world.
+# Polygons covering most land areas in the world.
 WORLD_POLYGONS = [
     # Americas
     [(-33.0, -7.0), (-55.0, 53.0), (-166.0, 65.0), (-68.0, -56.0)],
@@ -220,7 +220,8 @@ def get_patch(
     point: tuple[float, float],
     image: ee.Image,
     patch_size: int,
-    scale: int,
+    crs: str,
+    crs_scale: tuple[float, float],
 ) -> np.ndarray:
     """Fetches a patch of pixels from Earth Engine.
 
@@ -233,18 +234,19 @@ def get_patch(
     Returns: A NumPy structured array with shape (width, height).
     """
     (lon, lat) = point
-    offset_x = -scale * (patch_size + 1) / 2
-    offset_y = -scale * patch_size / 2
+    (scale_x, scale_y) = crs_scale
+    offset_x = -scale_x * (patch_size + 1) / 2
+    offset_y = -scale_y * patch_size / 2
 
     request = {
         "expression": image,
         "fileFormat": "NPY",
         "grid": {
             "dimensions": {"width": patch_size, "height": patch_size},
-            "crsCode": "EPSG:3857",  # https://epsg.io/3857
+            "crsCode": crs,
             "affineTransform": {
-                "scaleX": scale,
-                "scaleY": scale,
+                "scaleX": scale_x,
+                "scaleY": scale_y,
                 "shearX": 0,
                 "shearY": 0,
                 "translateX": lon + offset_x,

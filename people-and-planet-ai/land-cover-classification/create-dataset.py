@@ -97,13 +97,22 @@ class GetExample(DoFnEE):
     def __init__(self, patch_size: int) -> None:
         self.patch_size = patch_size
         self.image = None
+        self.crs = "EPSG:4326"  # https://epsg.io/3857
+        self.crs_scale = None
 
     def setup(self) -> None:
         super().setup()  # initialize Earth Engine
         self.image = landcover.data.get_example_image()
 
+        proj = ee.Projection(self.crs).atScale(10).getInfo()
+        scale_x = proj["transform"][0]
+        scale_y = -proj["transform"][4]
+        self.crs_scale = (scale_x, scale_y)
+
     def process(self, point: tuple[float, float]) -> Iterator[np.ndarray]:
-        yield landcover.data.get_patch(point, self.image, PATCH_SIZE, scale=10)
+        yield landcover.data.get_patch(
+            point, self.image, PATCH_SIZE, self.crs, self.crs_scale
+        )
 
 
 def serialize_to_tfexample(example: np.ndarray) -> bytes:

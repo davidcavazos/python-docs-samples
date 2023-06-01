@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: MOVE THIS INTO THE `landcover` PACKAGE
+
 from __future__ import annotations
 
 import numpy as np
