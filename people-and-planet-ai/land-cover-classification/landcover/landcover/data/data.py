@@ -99,20 +99,7 @@ def get_elevation() -> ee.Image:
     return ee.Image("MERIT/DEM/v1_0_3").rename("elevation").unmask(0).float()
 
 
-def get_input_image(year: int) -> ee.Image:
-    """Gets an Earth Engine image with all the inputs for the model.
-
-    Args:
-        year: Year to calculate the median composite.
-
-    Returns: An Earth Engine image with the model inputs.
-    """
-    sentinel2 = get_sentinel2(year)
-    elevation = get_elevation()
-    return ee.Image.cat([sentinel2, elevation])
-
-
-def get_label_image() -> ee.Image:
+def get_land_cover() -> ee.Image:
     """Gets an Earth Engine image with the labels to train the model.
 
     The labels come from the European Space Agency WorldCover dataset.
@@ -138,6 +125,19 @@ def get_label_image() -> ee.Image:
     )
 
 
+def get_input_image(year: int) -> ee.Image:
+    """Gets an Earth Engine image with all the inputs for the model.
+
+    Args:
+        year: Year to calculate the median composite.
+
+    Returns: An Earth Engine image with the model inputs.
+    """
+    sentinel2 = get_sentinel2(year)
+    elevation = get_elevation()
+    return ee.Image.cat([sentinel2, elevation])
+
+
 def sample_points(
     seed: int, num_samples: int, scale: int
 ) -> Iterator[tuple[float, float]]:
@@ -155,7 +155,7 @@ def sample_points(
 
     Yields: Tuples of (longitude, latitude) coordinates.
     """
-    land_cover = get_label_image().select("landcover")
+    land_cover = get_land_cover().select("landcover")
     elevation_bins = (
         get_elevation()
         .clamp(0, MAX_ELEVATION)
@@ -205,48 +205,36 @@ def get_example_image() -> ee.Image:
     return ee.Image.cat([input_image, label_image])
 
 
-def get_crs_scale(crs: str, scale: int) -> tuple[float, float]:
-    proj = ee.Projection(crs).atScale(scale).getInfo()
-    return (proj["transform"][0], proj["transform"][4])
-
-
 @retry.Retry()
 def get_patch(
     point: tuple[float, float],
     image: ee.Image,
     patch_size: int,
-    crs_code: str,
-    crs_scale: tuple[float, float],
+    scale: int,
 ) -> np.ndarray:
     """Fetches a patch of pixels from Earth Engine.
-
-    It retries if we get error "429: Too Many Requests".
 
     Args:
         image: Image to get the patch from.
         point: A (longitude, latitude) pair for the point of interest.
         patch_size: Size in pixels of the surrounding square patch.
-        crs: Coordinate Reference System code.
-        crs_scale: Pair of (scale_x, scale_y) for the CRS transform.
+        scale: Number of meters per pixel.
 
-    Returns:
-        The requested patch of pixels as a structured
-        NumPy array with shape (width, height).
+    Returns: A NumPy structured array with shape (width, height).
     """
     (lon, lat) = point
-    (scale_x, scale_y) = crs_scale
-    offset_x = -scale_x * (patch_size + 1) / 2
-    offset_y = -scale_y * patch_size / 2
+    offset_x = -scale * (patch_size + 1) / 2
+    offset_y = -scale * patch_size / 2
 
     request = {
         "expression": image,
         "fileFormat": "NPY",
         "grid": {
             "dimensions": {"width": patch_size, "height": patch_size},
-            "crsCode": crs_code,
+            "crsCode": "EPSG:3857",  # https://epsg.io/3857
             "affineTransform": {
-                "scaleX": scale_x,
-                "scaleY": scale_y,
+                "scaleX": scale,
+                "scaleY": scale,
                 "shearX": 0,
                 "shearY": 0,
                 "translateX": lon + offset_x,

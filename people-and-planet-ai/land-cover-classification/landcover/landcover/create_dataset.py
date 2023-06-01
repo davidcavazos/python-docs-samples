@@ -25,7 +25,7 @@ The land cover labels for the training dataset come from the ESA WorldCover.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 import logging
 
 import apache_beam as beam
@@ -34,7 +34,8 @@ from apache_beam.io.filebasedsink import FileBasedSink
 import ee
 import google.auth
 import numpy as np
-from typing import BinaryIO
+import requests
+from typing import Any, BinaryIO
 
 import landcover.data
 
@@ -45,7 +46,28 @@ MAX_REQUESTS = 20  # default EE request quota
 FILE_FORMAT = "numpy"
 
 # Constants.
+SCALE = 10000  # meters per pixel
 PATCH_SIZE = 5
+MAX_ELEVATION = 6000  # found empirically
+ELEVATION_BINS = 1  # TODO: CHANGE TO 10
+LANDCOVER_CLASSES = 9
+
+# Simple polygons covering most land areas in the world.
+WORLD_POLYGONS = [
+    # Americas
+    [(-33.0, -7.0), (-55.0, 53.0), (-166.0, 65.0), (-68.0, -56.0)],
+    # Africa, Asia, Europe
+    [
+        (74.0, 71.0),
+        (166.0, 55.0),
+        (115.0, -11.0),
+        (74.0, -4.0),
+        (20.0, -38.0),
+        (-29.0, 25.0),
+    ],
+    # Australia
+    [(170.0, -47.0), (179.0, -37.0), (167.0, -12.0), (128.0, 17.0), (106.0, -29.0)],
+]
 
 
 class DoFnEE(beam.DoFn):
@@ -75,14 +97,45 @@ class SamplePoints(DoFnEE):
     """Selects around the same number of points for every classification.
 
     Attributes:
-        num_samples: Total number of points to sample for each bin.
+        num_points: Total number of points to try to get.
+
     """
 
     def __init__(self, num_samples: int) -> None:
         self.num_samples = num_samples
 
     def process(self, seed: int) -> Iterator[tuple[float, float]]:
-        yield from landcover.data.sample_points(seed, self.num_samples, scale=1000)
+        """
+
+        This expects the input image to be an integer, for balanced regression points
+        you could do `image.int()` to truncate the values into an integer.
+        If the values are too large, it might be good to bucketize, for example
+        the range is between 0 and ~1000 `image.divide(100).int()` would give ~10 buckets.
+
+        Args:
+            seed: Random seed to make sure to get different results on different workers.
+
+        Yields: Tuples of (longitude, latitude) coordinates.
+        """
+        land_cover = landcover.data.get_land_cover().select('landcover')
+        elevation_bins = (
+            landcover.data.get_elevation()
+            .clamp(0, MAX_ELEVATION)
+            .divide(MAX_ELEVATION)
+            .multiply(ELEVATION_BINS - 1)
+            .uint8()
+        )
+        num_points = int(0.5 + self.num_samples / ELEVATION_BINS / LANDCOVER_CLASSES)
+        unique_bins = elevation_bins.multiply(ELEVATION_BINS).add(land_cover)
+        points = unique_bins.stratifiedSample(
+            numPoints=max(1, num_points),
+            region=ee.Geometry.MultiPolygon(WORLD_POLYGONS),
+            scale=SCALE,
+            seed=seed,
+            geometries=True,
+        )
+        for point in points.toList(points.size()).getInfo():
+            yield point["geometry"]["coordinates"]
 
 
 class GetExample(DoFnEE):
@@ -96,14 +149,17 @@ class GetExample(DoFnEE):
 
     def __init__(self, patch_size: int) -> None:
         self.patch_size = patch_size
-        self.image = None
+        self.crs = "EPSG:4326"
+        self.proj = None
 
     def setup(self) -> None:
-        super().setup()  # initialize Earth Engine
-        self.image = landcover.data.get_example_image()
+        super().setup()
+        self.proj = ee.Projection(self.crs).atScale(SCALE).getInfo()
 
-    def process(self, point: tuple[float, float]) -> Iterator[np.ndarray]:
-        yield landcover.data.get_patch(point, self.image, PATCH_SIZE, scale=10)
+    def process( self, point: tuple[float, float]) -> Iterator[np.ndarray]:
+        image = landcover.data.get_example_image()
+        crs_scale = (self.proj["transform"][0], self.proj["transform"][4])
+        yield landcover.data.get_patch(point, image, PATCH_SIZE, self.crs, crs_scale)
 
 
 def serialize_to_tfexample(example: np.ndarray) -> bytes:
@@ -121,9 +177,7 @@ def serialize_to_tfexample(example: np.ndarray) -> bytes:
 
     features = {
         name: tf.train.Feature(
-            bytes_list=tf.train.BytesList(
-                value=[tf.io.serialize_tensor(example[name]).numpy()]
-            )
+            bytes_list=tf.train.BytesList(value=[tf.io.serialize_tensor(example[name]).numpy()])
         )
         for name in example.dtype.names
     }
@@ -145,13 +199,9 @@ class NumPySink(FileBasedSink):
         np.savez_compressed(file_handle, **values)
         return super().close(file_handle)
 
-
 @beam.ptransform_fn
-def WriteToNumPy(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
+def WriteToNumPy(pcollection: beam.PCollection[np.ndarray], file_path_prefix: str) -> beam.PCollection[str]:
     return pcollection | beam.io.Write(NumPySink(file_path_prefix))
-
 
 class TorchSink(FileBasedSink):
     def __init__(self, file_path_prefix: str) -> None:
@@ -165,19 +215,13 @@ class TorchSink(FileBasedSink):
         import torch
 
         batch = np.stack(self.examples)
-        values = {
-            name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names
-        }
+        values = {name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names}
         torch.save(values, file_handle)
         return super().close(file_handle)
 
-
 @beam.ptransform_fn
-def WriteToTorch(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
+def WriteToTorch(pcollection: beam.PCollection[np.ndarray], file_path_prefix: str) -> beam.PCollection[str]:
     return pcollection | beam.io.Write(TorchSink(file_path_prefix))
-
 
 class SafeTensorsSink(FileBasedSink):
     def __init__(self, file_path_prefix: str) -> None:
@@ -192,18 +236,13 @@ class SafeTensorsSink(FileBasedSink):
         import torch
 
         batch = np.stack(self.examples)
-        values = {
-            name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names
-        }
+        values = {name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names}
         byte_data = save(values)
         file_handle.write(byte_data)
         return super().close(file_handle)
 
-
 @beam.ptransform_fn
-def WriteToSafeTensors(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
+def WriteToSafeTensors(pcollection: beam.PCollection[np.ndarray], file_path_prefix: str) -> beam.PCollection[str]:
     return pcollection | beam.io.Write(SafeTensorsSink(file_path_prefix))
 
 
@@ -223,7 +262,7 @@ def CreateDataset(
 
     Args:
         data_path: Directory path to save the TFRecord files.
-        num_samples: Total number of points to sample for each bin.
+        num_points: Total number of points to try to get.
         max_requests: Limit the number of concurrent requests to Earth Engine.
         beam_args: Apache Beam command line arguments to parse as pipeline options.
     """
@@ -256,15 +295,13 @@ def CreateDataset(
             return examples | "📚 Write PyTorch" >> WriteToTorch(f"{data_path}/examples")
 
         case "safetensors":
-            return examples | "📚 Write SafeTensors" >> WriteToSafeTensors(
-                f"{data_path}/examples"
-            )
+            return examples | "📚 Write SafeTensors" >> WriteToSafeTensors(f"{data_path}/examples")
 
         case file_format:
             raise ValueError(f"File format not supported: {file_format}")
 
 
-if __name__ == "__main__":
+def __main__():
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -316,3 +353,7 @@ if __name__ == "__main__":
             )
             | beam.Map(print)
         )
+
+
+if __name__ == "__main__":
+    __main__()
