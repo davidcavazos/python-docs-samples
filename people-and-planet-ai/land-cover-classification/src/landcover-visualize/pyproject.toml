@@ -12,4 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .visualize import *
+# https://peps.python.org/pep-0621
+[project]
+name = "landcover-visualize"
+version = "1.0.0"
+dependencies = [
+    "earthengine-api==0.1.355",
+    "plotly==5.14.1"
+]

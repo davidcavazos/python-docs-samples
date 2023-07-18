@@ -27,32 +27,34 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import logging
+import os
 
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from apache_beam.io.filebasedsink import FileBasedSink
+from apache_beam.io.filesystems import FileSystems
 import ee
 import google.auth
 import numpy as np
-from typing import BinaryIO
-
-import landcover.data
-
+import subprocess
 
 # Default values.
 NUM_SAMPLES = 10  # TODO: FIND VALUE
-MAX_REQUESTS = 20  # default EE request quota
-FILE_FORMAT = "numpy"
+MAX_REQUESTS = 20  # default EE maximum concurrent request quota
 
 # Constants.
 PATCH_SIZE = 5
+FILE_FORMATS = [
+    "numpy",
+    "tensorflow",
+    "torch",
+    "safetensors.numpy",
+    "safetensors.tensorflow",
+    "safetensors.torch",
+]
 
 
 class DoFnEE(beam.DoFn):
-    """Base DoFn for Earth Engine transforms.
-
-    Initializes Earth Engine once per worker.
-    """
+    """Base DoFn for Earth Engine transforms, initializes EE once per worker."""
 
     def setup(self) -> None:
         # Get the default credentials to authenticate to Earth Engine.
@@ -76,22 +78,35 @@ class SamplePoints(DoFnEE):
 
     Attributes:
         num_samples: Total number of points to sample for each bin.
+
+    Args:
+        seed: Number to seed the EE stratified sample random generator.
+
+    Yields: Pairs of (longitude, latitude) coordinates.
     """
 
     def __init__(self, num_samples: int) -> None:
         self.num_samples = num_samples
 
     def process(self, seed: int) -> Iterator[tuple[float, float]]:
+        import landcover.data
+
         yield from landcover.data.sample_points(seed, self.num_samples, scale=1000)
 
 
 class GetExample(DoFnEE):
     """Gets an (inputs, labels) training example for the year 2020.
 
-    Args:
-        point: A (longitude, latitude) pair for the point of interest.
+    Attributes:
+        patch_size: Square patch size in pixels.
+        image: Earth Engine image to get pixels from.
+        crs: Coordinate Reference System code.
+        crs_scale: Pair of (scale_x, scale_y) transform for the CRS.
 
-    Yields: An (inputs, labels) pair of NumPy arrays.
+    Args:
+        point: The (longitude, latitude) coordinates for the point of interest.
+
+    Yields: NumPy structured arrays with shape (width, height).
     """
 
     def __init__(self, patch_size: int) -> None:
@@ -101,128 +116,33 @@ class GetExample(DoFnEE):
         self.crs_scale = None
 
     def setup(self) -> None:
-        super().setup()  # initialize Earth Engine
-        self.image = landcover.data.get_example_image()
+        import landcover.data
 
+        super().setup()  # initialize Earth Engine
+
+        # Initialize these values here since they require
+        # Earth Engine to be initialized.
+        self.image = landcover.data.get_example_image()
         proj = ee.Projection(self.crs).atScale(10).getInfo()
         scale_x = proj["transform"][0]
         scale_y = -proj["transform"][4]
         self.crs_scale = (scale_x, scale_y)
 
     def process(self, point: tuple[float, float]) -> Iterator[np.ndarray]:
+        import landcover.data
+
         yield landcover.data.get_patch(
             point, self.image, PATCH_SIZE, self.crs, self.crs_scale
         )
 
 
-def serialize_to_tfexample(example: np.ndarray) -> bytes:
-    """Serializes an example NumPy array as a tf.Example.
-
-    Both inputs and outputs are expected to be dense tensors, not dictionaries.
-    We serialize both the inputs and labels to save their shapes.
-
-    Args:
-        example: The example array containing inputs and labels.
-
-    Returns: The serialized tf.Example as bytes.
-    """
-    import tensorflow as tf
-
-    features = {
-        name: tf.train.Feature(
-            bytes_list=tf.train.BytesList(
-                value=[tf.io.serialize_tensor(example[name]).numpy()]
-            )
-        )
-        for name in example.dtype.names
-    }
-    example = tf.train.Example(features=tf.train.Features(feature=features))
-    return example.SerializeToString()
-
-
-class NumPySink(FileBasedSink):
-    def __init__(self, file_path_prefix: str) -> None:
-        super().__init__(file_path_prefix, coder=None, file_name_suffix=".npz")
-        self.examples = []
-
-    def write_record(self, file_handle: BinaryIO, example: np.ndarray):
-        self.examples.append(example)
-
-    def close(self, file_handle: BinaryIO):
-        batch = np.stack(self.examples)
-        values = {name: batch[name] for name in batch.dtype.names}
-        np.savez_compressed(file_handle, **values)
-        return super().close(file_handle)
-
-
-@beam.ptransform_fn
-def WriteToNumPy(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
-    return pcollection | beam.io.Write(NumPySink(file_path_prefix))
-
-
-class TorchSink(FileBasedSink):
-    def __init__(self, file_path_prefix: str) -> None:
-        super().__init__(file_path_prefix, coder=None, file_name_suffix=".pt")
-        self.examples = []
-
-    def write_record(self, file_handle: BinaryIO, example: np.ndarray):
-        self.examples.append(example)
-
-    def close(self, file_handle: BinaryIO):
-        import torch
-
-        batch = np.stack(self.examples)
-        values = {
-            name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names
-        }
-        torch.save(values, file_handle)
-        return super().close(file_handle)
-
-
-@beam.ptransform_fn
-def WriteToTorch(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
-    return pcollection | beam.io.Write(TorchSink(file_path_prefix))
-
-
-class SafeTensorsSink(FileBasedSink):
-    def __init__(self, file_path_prefix: str) -> None:
-        super().__init__(file_path_prefix, coder=None, file_name_suffix=".safetensors")
-        self.examples = []
-
-    def write_record(self, file_handle: BinaryIO, example: np.ndarray):
-        self.examples.append(example)
-
-    def close(self, file_handle: BinaryIO):
-        from safetensors.torch import save
-        import torch
-
-        batch = np.stack(self.examples)
-        values = {
-            name: torch.from_numpy(batch[name].copy()) for name in batch.dtype.names
-        }
-        byte_data = save(values)
-        file_handle.write(byte_data)
-        return super().close(file_handle)
-
-
-@beam.ptransform_fn
-def WriteToSafeTensors(
-    pcollection: beam.PCollection[np.ndarray], file_path_prefix: str
-) -> beam.PCollection[str]:
-    return pcollection | beam.io.Write(SafeTensorsSink(file_path_prefix))
-
-
 @beam.ptransform_fn
 def CreateDataset(
     pcollection: beam.PCollection[int],
+    file_format: str,
     data_path: str,
     num_samples: int = NUM_SAMPLES,
     max_requests: int = MAX_REQUESTS,
-    file_format: str = FILE_FORMAT,
 ) -> beam.PCollection[str]:
     """Creates an Apache Beam pipeline to create a dataset.
 
@@ -231,6 +151,7 @@ def CreateDataset(
     to avoid quota issues. You can request for an increas of quota if you need it.
 
     Args:
+        file_format: File format to write the dataset files to.
         data_path: Directory path to save the TFRecord files.
         num_samples: Total number of points to sample for each bin.
         max_requests: Limit the number of concurrent requests to Earth Engine.
@@ -246,27 +167,28 @@ def CreateDataset(
         | "📈 Unthrottle" >> beam.Reshuffle()
     )
 
-    match file_format:
-        case "numpy":
-            return examples | "📚 Write NumPy" >> WriteToNumPy(f"{data_path}/examples")
+    path_prefix = FileSystems.join(data_path, "examples")
+    match file_format.split("."):
+        case ["numpy"]:
+            from io_numpy.writer import WriteToNumPy
 
-        case "tfrecord":
-            return (
-                examples
-                | "✍️ TFExample serialize" >> beam.Map(serialize_to_tfexample)
-                | "📚 Write TFRecords"
-                >> beam.io.WriteToTFRecord(
-                    file_path_prefix=f"{data_path}/examples",
-                    file_name_suffix=".tfrecord.gz",
-                )
-            )
+            return examples | "📚 Write NumPy" >> WriteToNumPy(path_prefix)
 
-        case "torch":
-            return examples | "📚 Write PyTorch" >> WriteToTorch(f"{data_path}/examples")
+        case ["tensorflow"]:
+            from io_tensorflow.writer import WriteToTFRecord
 
-        case "safetensors":
+            return examples | "📚 Write TFRecords" >> WriteToTFRecord(path_prefix)
+
+        case ["torch"]:
+            from io_torch.writer import WriteToTorch
+
+            return examples | "📚 Write PyTorch" >> WriteToTorch(path_prefix)
+
+        case ["safetensors", tensor_format]:
+            from io_safetensors.writer import WriteToSafeTensors
+
             return examples | "📚 Write SafeTensors" >> WriteToSafeTensors(
-                f"{data_path}/examples"
+                path_prefix, tensor_format
             )
 
         case file_format:
@@ -277,6 +199,11 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "file_format",
+        choices=FILE_FORMATS,
+        help="File format to write the dataset files to.",
+    )
     parser.add_argument(
         "--data-path",
         required=True,
@@ -289,12 +216,6 @@ if __name__ == "__main__":
         help="Total number of points to sample.",
     )
     parser.add_argument(
-        "--file-format",
-        default=FILE_FORMAT,
-        choices=["numpy", "tfrecord", "torch", "safetensors"],
-        help="File format to write the dataset files to.",
-    )
-    parser.add_argument(
         "--max-requests",
         default=MAX_REQUESTS,
         type=int,
@@ -302,26 +223,64 @@ if __name__ == "__main__":
     )
     args, beam_args = parser.parse_known_args()
 
+    def build_package(name: str, version: str = "1.0.0") -> str:
+        filename = os.path.join("build", f"{name}-{version}.tar.gz")
+        if os.path.exists(filename):
+            return filename
+        cmd = [
+            "python",
+            "-m",
+            "build",
+            "--sdist",
+            os.path.join("src", name),
+            "--outdir",
+            "build",
+        ]
+        print(f"Running: {cmd}")
+        subprocess.run(cmd, check=True)
+        return filename
+
+    match args.file_format.split("."):
+        case [name]:
+            packages = [
+                build_package("landcover-data"),
+                build_package(f"io-{name}"),
+            ]
+
+        case [name, tensor_format]:
+            packages = [
+                build_package("landcover-data"),
+                build_package(f"io-{name}"),
+                build_package(f"io-{tensor_format}"),
+            ]
+
+        case _:
+            raise ValueError(f"File format not supported: {args.file_format}")
+
     logging.getLogger().setLevel(logging.INFO)
 
+    # Define the pipeline options.
     beam_options = PipelineOptions(
         beam_args,
         save_main_session=True,
         pickle_library="cloudpickle",
         direct_num_workers=20,  # direct runner
         direct_running_mode="multi_threading",
+        requirements_cache="skip",
+        extra_packages=packages,
     )
 
+    # Define the pipeline.
     with beam.Pipeline(options=beam_options) as pipeline:
         _ = (
             pipeline
             | "🌱 Make seeds" >> beam.Create(range(args.max_requests))
             | "🗄️ Create dataset"
             >> CreateDataset(
+                file_format=args.file_format,
                 data_path=args.data_path,
                 num_samples=args.num_samples,
                 max_requests=args.max_requests,
-                file_format=args.file_format,
             )
             | beam.Map(print)
         )
