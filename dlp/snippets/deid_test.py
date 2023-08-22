@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import os
 import shutil
 import tempfile
@@ -40,14 +39,6 @@ CSV_FILE = os.path.join(os.path.dirname(__file__), "resources/dates.csv")
 DATE_SHIFTED_AMOUNT = 30
 DATE_FIELDS = ["birth_date", "register_date"]
 CSV_CONTEXT_FIELD = "name"
-TABLE_DATA = {
-    "header": ["age", "patient", "happiness_score"],
-    "rows": [
-        ["101", "Charles Dickens", "95"],
-        ["22", "Jane Austen", "21"],
-        ["90", "Mark Twain", "75"]
-    ]
-}
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +57,9 @@ def test_deidentify_with_mask(capsys: pytest.CaptureFixture) -> None:
     assert "My SSN is *********" in out
 
 
-def test_deidentify_with_mask_ignore_insensitive_data(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_mask_ignore_insensitive_data(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_mask(
         GCLOUD_PROJECT, HARMLESS_STRING, ["US_SOCIAL_SECURITY_NUMBER"]
     )
@@ -75,7 +68,9 @@ def test_deidentify_with_mask_ignore_insensitive_data(capsys: pytest.CaptureFixt
     assert HARMLESS_STRING in out
 
 
-def test_deidentify_with_mask_masking_character_specified(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_mask_masking_character_specified(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_mask(
         GCLOUD_PROJECT,
         HARMFUL_STRING,
@@ -87,7 +82,9 @@ def test_deidentify_with_mask_masking_character_specified(capsys: pytest.Capture
     assert "My SSN is #########" in out
 
 
-def test_deidentify_with_mask_masking_number_specified(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_mask_masking_number_specified(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_mask(
         GCLOUD_PROJECT,
         HARMFUL_STRING,
@@ -149,7 +146,9 @@ def test_deidentify_with_deterministic(capsys: pytest.CaptureFixture) -> None:
     assert "372819127" not in out
 
 
-def test_deidentify_with_fpe_uses_surrogate_info_types(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_fpe_uses_surrogate_info_types(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_fpe(
         GCLOUD_PROJECT,
         HARMFUL_STRING,
@@ -165,7 +164,9 @@ def test_deidentify_with_fpe_uses_surrogate_info_types(capsys: pytest.CaptureFix
     assert "372819127" not in out
 
 
-def test_deidentify_with_fpe_ignores_insensitive_data(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_fpe_ignores_insensitive_data(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_fpe(
         GCLOUD_PROJECT,
         HARMLESS_STRING,
@@ -179,7 +180,25 @@ def test_deidentify_with_fpe_ignores_insensitive_data(capsys: pytest.CaptureFixt
     assert HARMLESS_STRING in out
 
 
-def test_deidentify_with_date_shift(tempdir: TextIO, capsys: pytest.CaptureFixture) -> None:
+def test_reidentify_text_with_fpe(capsys: pytest.CaptureFixture) -> None:
+    labeled_fpe_string = "My phone number is PHONE_NUMBER(10):9617256398"
+
+    deid.reidentify_text_with_fpe(
+        GCLOUD_PROJECT,
+        labeled_fpe_string,
+        wrapped_key=WRAPPED_KEY,
+        key_name=KEY_NAME,
+    )
+
+    out, _ = capsys.readouterr()
+
+    assert "PHONE_NUMBER" not in out
+    assert "9617256398" not in out
+
+
+def test_deidentify_with_date_shift(
+    tempdir: TextIO, capsys: pytest.CaptureFixture
+) -> None:
     output_filepath = os.path.join(tempdir, "dates-shifted.csv")
 
     deid.deidentify_with_date_shift(
@@ -196,7 +215,9 @@ def test_deidentify_with_date_shift(tempdir: TextIO, capsys: pytest.CaptureFixtu
     assert "Successful" in out
 
 
-def test_deidentify_with_date_shift_using_context_field(tempdir: TextIO, capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_date_shift_using_context_field(
+    tempdir: TextIO, capsys: pytest.CaptureFixture
+) -> None:
     output_filepath = os.path.join(tempdir, "dates-shifted.csv")
 
     deid.deidentify_with_date_shift(
@@ -209,6 +230,23 @@ def test_deidentify_with_date_shift_using_context_field(tempdir: TextIO, capsys:
         context_field_id=CSV_CONTEXT_FIELD,
         wrapped_key=WRAPPED_KEY,
         key_name=KEY_NAME,
+    )
+
+    out, _ = capsys.readouterr()
+
+    assert "Successful" in out
+
+
+def test_deidentify_with_time_extract(
+    tempdir: TextIO, capsys: pytest.CaptureFixture
+) -> None:
+    output_filepath = os.path.join(str(tempdir), "year-extracted.csv")
+
+    deid.deidentify_with_time_extract(
+        GCLOUD_PROJECT,
+        input_csv_file=CSV_FILE,
+        output_csv_file=output_filepath,
+        date_fields=DATE_FIELDS,
     )
 
     out, _ = capsys.readouterr()
@@ -249,7 +287,9 @@ def test_reidentify_with_deterministic(capsys: pytest.CaptureFixture) -> None:
     assert "SSN_TOKEN(" not in out
 
 
-def test_deidentify_free_text_with_fpe_using_surrogate(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_free_text_with_fpe_using_surrogate(
+    capsys: pytest.CaptureFixture,
+) -> None:
     labeled_fpe_string = "My phone number is 4359916732"
 
     deid.deidentify_free_text_with_fpe_using_surrogate(
@@ -268,7 +308,9 @@ def test_deidentify_free_text_with_fpe_using_surrogate(capsys: pytest.CaptureFix
     assert "4359916732" not in out
 
 
-def test_reidentify_free_text_with_fpe_using_surrogate(capsys: pytest.CaptureFixture) -> None:
+def test_reidentify_free_text_with_fpe_using_surrogate(
+    capsys: pytest.CaptureFixture,
+) -> None:
     labeled_fpe_string = "My phone number is PHONE_TOKEN(10):9617256398"
 
     deid.reidentify_free_text_with_fpe_using_surrogate(
@@ -310,10 +352,15 @@ def test_deidentify_with_simple_word_list(capsys: pytest.CaptureFixture) -> None
 
     out, _ = capsys.readouterr()
 
-    assert "Patient was seen in [CUSTOM_ROOM_ID] then transferred to [CUSTOM_ROOM_ID]" in out
+    assert (
+        "Patient was seen in [CUSTOM_ROOM_ID] then transferred to [CUSTOM_ROOM_ID]"
+        in out
+    )
 
 
-def test_deidentify_with_simple_word_list_ignores_insensitive_data(capsys: pytest.CaptureFixture) -> None:
+def test_deidentify_with_simple_word_list_ignores_insensitive_data(
+    capsys: pytest.CaptureFixture,
+) -> None:
     deid.deidentify_with_simple_word_list(
         GCLOUD_PROJECT,
         "Patient was seen in RM-RED then transferred to rm green",
@@ -330,119 +377,13 @@ def test_deidentify_with_exception_list(capsys: pytest.CaptureFixture) -> None:
     content_str = "jack@example.org accessed record of user: gary@example.org"
     exception_list = ["jack@example.org", "jill@example.org"]
     deid.deidentify_with_exception_list(
-        GCLOUD_PROJECT,
-        content_str,
-        ["EMAIL_ADDRESS"],
-        exception_list
+        GCLOUD_PROJECT, content_str, ["EMAIL_ADDRESS"], exception_list
     )
 
     out, _ = capsys.readouterr()
 
     assert "gary@example.org" not in out
     assert "jack@example.org accessed record of user: [EMAIL_ADDRESS]" in out
-
-
-def test_deidentify_table_bucketing(capsys: pytest.CaptureFixture) -> None:
-    deid_list = ["happiness_score"]
-    bucket_size = 10
-    lower_bound = 0
-    upper_bound = 100
-
-    deid.deidentify_table_bucketing(
-        GCLOUD_PROJECT,
-        TABLE_DATA,
-        deid_list,
-        bucket_size,
-        lower_bound,
-        upper_bound,
-    )
-
-    out, _ = capsys.readouterr()
-    assert "string_value: \"90:100\"" in out
-    assert "string_value: \"20:30\"" in out
-    assert "string_value: \"70:80\"" in out
-
-
-def test_deidentify_table_condition_replace_with_info_types(capsys: pytest.CaptureFixture) -> None:
-    deid_list = ["patient", "factoid"]
-    table_data = {"header": ["age", "patient", "happiness_score", "factoid"],
-                  "rows": [
-                      ["101", "Charles Dickens", "95", "Charles Dickens name was a curse invented by Shakespeare."],
-                      ["22", "Jane Austen", "21", "There are 14 kisses in Jane Austen's novels."],
-                      ["90", "Mark Twain", "75", "Mark Twain loved cats."]]}
-
-    deid.deidentify_table_condition_replace_with_info_types(
-        GCLOUD_PROJECT,
-        table_data,
-        deid_list,
-        ["PERSON_NAME"],
-        "age",
-        "GREATER_THAN",
-        89,
-    )
-
-    out, _ = capsys.readouterr()
-
-    assert "string_value: \"Jane Austen\"" in out
-    assert "[PERSON_NAME] name was a curse invented by [PERSON_NAME]." in out
-    assert "There are 14 kisses in Jane Austen\\\'s novels." in out
-    assert "[PERSON_NAME] loved cats." in out
-
-
-def test_deidentify_table_condition_masking(capsys: pytest.CaptureFixture) -> None:
-    deid_list = ["happiness_score"]
-    deid.deidentify_table_condition_masking(
-        GCLOUD_PROJECT,
-        TABLE_DATA,
-        deid_list,
-        condition_field="age",
-        condition_operator="GREATER_THAN",
-        condition_value=89,
-    )
-    out, _ = capsys.readouterr()
-    assert "string_value: \"**\"" in out
-    assert "string_value: \"21\"" in out
-
-
-def test_deidentify_table_condition_masking_with_masking_character_specified(capsys: pytest.CaptureFixture) -> None:
-    deid_list = ["happiness_score"]
-    deid.deidentify_table_condition_masking(
-        GCLOUD_PROJECT,
-        TABLE_DATA,
-        deid_list,
-        condition_field="age",
-        condition_operator="GREATER_THAN",
-        condition_value=89,
-        masking_character="#"
-    )
-    out, _ = capsys.readouterr()
-    assert "string_value: \"##\"" in out
-    assert "string_value: \"21\"" in out
-
-
-def test_deidentify_table_replace_with_info_types(capsys: pytest.CaptureFixture) -> None:
-    table_data = {
-        "header": ["age", "patient", "happiness_score", "factoid"],
-        "rows": [
-            ["101", "Charles Dickens", "95", "Charles Dickens name was a curse invented by Shakespeare."],
-            ["22", "Jane Austen", "21", "There are 14 kisses in Jane Austen's novels."],
-            ["90", "Mark Twain", "75", "Mark Twain loved cats."],
-        ],
-    }
-
-    deid.deidentify_table_replace_with_info_types(
-        GCLOUD_PROJECT,
-        table_data,
-        ["PERSON_NAME"],
-        ["patient", "factoid"],
-    )
-
-    out, _ = capsys.readouterr()
-
-    assert "string_value: \"[PERSON_NAME]\"" in out
-    assert "[PERSON_NAME] name was a curse invented by [PERSON_NAME]." in out
-    assert "There are 14 kisses in [PERSON_NAME] novels." in out
-    assert "[PERSON_NAME] loved cats." in out
 
 
 def test_deindentify_with_dictionary_replacement(capsys: pytest.CaptureFixture) -> None:
@@ -454,20 +395,8 @@ def test_deindentify_with_dictionary_replacement(capsys: pytest.CaptureFixture) 
     )
     out, _ = capsys.readouterr()
     assert "aabernathy@example.com" not in out
-    assert "izumi@example.com" in out or "alex@example.com" in out or "tal@example.com" in out
-
-
-def test_deidentify_table_suppress_row(capsys: pytest.CaptureFixture) -> None:
-    deid.deidentify_table_suppress_row(
-        GCLOUD_PROJECT,
-        TABLE_DATA,
-        "age",
-        "GREATER_THAN",
-        89
+    assert (
+        "izumi@example.com" in out
+        or "alex@example.com" in out
+        or "tal@example.com" in out
     )
-
-    out, _ = capsys.readouterr()
-
-    assert "string_value: \"Charles Dickens\"" not in out
-    assert "string_value: \"Jane Austen\"" in out
-    assert "string_value: \"Mark Twain\"" not in out

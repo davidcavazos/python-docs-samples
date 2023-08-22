@@ -313,6 +313,95 @@ def deidentify_with_fpe(
 # [END dlp_deidentify_fpe]
 
 
+# [START dlp_reidentify_text_fpe]
+import base64  # noqa: F811, E402, I100
+
+import google.cloud.dlp  # noqa: F811, E402
+
+
+def reidentify_text_with_fpe(
+    project: str,
+    input_str: str,
+    key_name: str = None,
+    wrapped_key: str = None,
+) -> None:
+    """
+    Uses the Data Loss Prevention API to re-identify sensitive data in a
+    string using Format Preserving Encryption (FPE).
+    Args:
+        project: The Google Cloud project id to use as a parent resource.
+        input_str: The string to re-identify (will be treated as text).
+        key_name: The name of the Cloud KMS key used to encrypt ('wrap') the
+            AES-256 key. Example:
+            key_name = 'projects/YOUR_GCLOUD_PROJECT/locations/YOUR_LOCATION/
+            keyRings/YOUR_KEYRING_NAME/cryptoKeys/YOUR_KEY_NAME'
+        wrapped_key: The encrypted ('wrapped') AES-256 key to use. This key
+            should be encrypted using the Cloud KMS key specified by key_name.
+    """
+
+    # Instantiate a client.
+    dlp = google.cloud.dlp_v2.DlpServiceClient()
+
+    # The wrapped key is base64-encoded, but the library expects a binary
+    # string, so decode it here.
+    wrapped_key = base64.b64decode(wrapped_key)
+
+    # Specify the type of info the inspection will re-identify.
+    # This must use the same custom infoType that was used as a
+    # surrogate during the initial encryption.
+    surrogate_info_type = {"name": "PHONE_NUMBER"}
+
+    # Construct FPE configuration dictionary
+    crypto_replace_ffx_fpe_config = {
+        "crypto_key": {
+            "kms_wrapped": {"wrapped_key": wrapped_key, "crypto_key_name": key_name}
+        },
+        "common_alphabet": "NUMERIC",
+        "surrogate_info_type": surrogate_info_type,
+    }
+
+    # Construct re-identify configuration dictionary
+    reidentify_config = {
+        "info_type_transformations": {
+            "transformations": [
+                {
+                    "primitive_transformation": {
+                        "crypto_replace_ffx_fpe_config": crypto_replace_ffx_fpe_config,
+                    },
+                    "info_types": [surrogate_info_type],
+                }
+            ]
+        }
+    }
+
+    # Construct inspect configuration dictionary
+    inspect_config = {
+        "custom_info_types": [{"info_type": surrogate_info_type, "surrogate_type": {}}]
+    }
+
+    # Construct the `item`.
+    item = {"value": input_str}
+
+    # Convert the project id into a full resource id.
+    parent = f"projects/{project}"
+
+    # Call the API.
+    response = dlp.reidentify_content(
+        request={
+            "parent": parent,
+            "reidentify_config": reidentify_config,
+            "inspect_config": inspect_config,
+            "item": item,
+        }
+    )
+
+    # Print results
+    print(f"Text after re-identification: {response.item.value}")
+
+
+# [END dlp_reidentify_text_fpe]
+
+
 # [START dlp_deidentify_deterministic]
 import base64  # noqa: F811, E402, I100
 from typing import List  # noqa: F811, E402
@@ -854,7 +943,6 @@ def deidentify_with_date_shift(
     # The wrapped key is base64-encoded, but the library expects a binary
     # string, so decode it here.
     if context_field_id and key_name and wrapped_key:
-
         date_shift_config["context"] = {"name": context_field_id}
         date_shift_config["crypto_key"] = {
             "kms_wrapped": {
@@ -913,6 +1001,133 @@ def deidentify_with_date_shift(
 
 
 # [END dlp_deidentify_date_shift]
+
+
+# [START dlp_deidentify_time_extract]
+import csv  # noqa: F811, E402, I100
+from datetime import datetime  # noqa: F811, E402, I100
+from typing import List  # noqa: F811, E402
+
+import google.cloud.dlp  # noqa: F811, E402
+
+
+def deidentify_with_time_extract(
+    project: str,
+    date_fields: List[str],
+    input_csv_file: str,
+    output_csv_file: str,
+) -> None:
+    """Uses the Data Loss Prevention API to deidentify dates in a CSV file through
+     time part extraction.
+    Args:
+        project: The Google Cloud project id to use as a parent resource.
+        date_fields: A list of (date) fields in CSV file to de-identify
+            through time extraction. Example: ['birth_date', 'register_date'].
+            Date values in format: mm/DD/YYYY are considered as part of this
+            sample.
+        input_csv_file: The path to the CSV file to deidentify. The first row
+            of the file must specify column names, and all other rows must
+            contain valid values.
+        output_csv_file: The output file path to save the time extracted data.
+    """
+
+    # Instantiate a client.
+    dlp = google.cloud.dlp_v2.DlpServiceClient()
+
+    # Convert date field list to Protobuf type.
+    def map_fields(field):
+        return {"name": field}
+
+    if date_fields:
+        date_fields = map(map_fields, date_fields)
+    else:
+        date_fields = []
+
+    csv_lines = []
+    with open(input_csv_file) as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            csv_lines.append(row)
+
+    #  Helper function for converting CSV rows to Protobuf types
+    def map_headers(header):
+        return {"name": header}
+
+    def map_data(value):
+        try:
+            date = datetime.strptime(value, "%m/%d/%Y")
+            return {
+                "date_value": {"year": date.year, "month": date.month, "day": date.day}
+            }
+        except ValueError:
+            return {"string_value": value}
+
+    def map_rows(row):
+        return {"values": map(map_data, row)}
+
+    # Using the helper functions, convert CSV rows to protobuf-compatible
+    # dictionaries.
+    csv_headers = map(map_headers, csv_lines[0])
+    csv_rows = map(map_rows, csv_lines[1:])
+
+    # Construct the table dictionary.
+    table = {"headers": csv_headers, "rows": csv_rows}
+
+    # Construct the `item` for table to de-identify.
+    item = {"table": table}
+
+    # Construct deidentify configuration dictionary.
+    deidentify_config = {
+        "record_transformations": {
+            "field_transformations": [
+                {
+                    "primitive_transformation": {
+                        "time_part_config": {"part_to_extract": "YEAR"}
+                    },
+                    "fields": date_fields,
+                }
+            ]
+        }
+    }
+
+    # Write to CSV helper methods.
+    def write_header(header):
+        return header.name
+
+    def write_data(data):
+        return data.string_value or "{}/{}/{}".format(
+            data.date_value.month,
+            data.date_value.day,
+            data.date_value.year,
+        )
+
+    # Convert the project id into a full resource id.
+    parent = f"projects/{project}"
+
+    # Call the API
+    response = dlp.deidentify_content(
+        request={
+            "parent": parent,
+            "deidentify_config": deidentify_config,
+            "item": item,
+        }
+    )
+
+    # Print the result.
+    print("Table after de-identification: {}".format(response.item.table))
+
+    # Write results to CSV file.
+    with open(output_csv_file, "w") as csvfile:
+        write_file = csv.writer(csvfile, delimiter=",")
+        write_file.writerow(map(write_header, response.item.table.headers))
+        for row in response.item.table.rows:
+            write_file.writerow(map(write_data, row.values))
+
+    # Print status.
+    print(f"Successfully saved date-extracted output to {output_csv_file}")
+
+
+# [END dlp_deidentify_time_extract]
 
 
 # [START dlp_deidentify_replace_infotype]
@@ -1124,441 +1339,6 @@ def deidentify_with_exception_list(
 # [END dlp_deidentify_exception_list]
 
 
-# [START dlp_deidentify_table_bucketing]
-from typing import Dict, List, Union  # noqa: F811, E402, I100
-
-import google.cloud.dlp  # noqa: F811, E402
-from google.cloud.dlp_v2 import types  # noqa: F811, E402
-
-
-def deidentify_table_bucketing(
-    project: str,
-    table_data: Dict[str, Union[List[str], List[List[str]]]],
-    deid_content_list: List[str],
-    bucket_size: int,
-    bucketing_lower_bound: int,
-    bucketing_upper_bound: int,
-) -> types.dlp.Table:
-    """Uses the Data Loss Prevention API to de-identify sensitive data in a
-    table by replacing them with fixed size bucket ranges.
-    Args:
-        project: The Google Cloud project id to use as a parent resource.
-        table_data: Dictionary representing table data.
-        deid_content_list: A list of fields in table to de-identify.
-        bucket_size: Size of each bucket for fixed sized bucketing
-            (except for minimum and maximum buckets). So if ``bucketing_lower_bound`` = 10,
-            ``bucketing_upper_bound`` = 89, and ``bucket_size`` = 10, then the
-            following buckets would be used: -10, 10-20, 20-30, 30-40,
-            40-50, 50-60, 60-70, 70-80, 80-89, 89+.
-       bucketing_lower_bound: Lower bound value of buckets.
-       bucketing_upper_bound:  Upper bound value of buckets.
-
-    Returns:
-       De-identified table is returned;
-       the response from the API is also printed to the terminal.
-
-    Example:
-    >> $ python deid.py deid_table_bucketing \
-        '{"header": ["email", "phone number", "age"],
-        "rows": [["robertfrost@example.com", "4232342345", "35"],
-        ["johndoe@example.com", "4253458383", "68"]]}' \
-        ["age"] 10 0 100
-        >>  '{"header": ["email", "phone number", "age"],
-            "rows": [["robertfrost@example.com", "4232342345", "30:40"],
-            ["johndoe@example.com", "4253458383", "60:70"]]}'
-    """
-
-    # Instantiate a client.
-    dlp = google.cloud.dlp_v2.DlpServiceClient()
-
-    # Convert the project id into a full resource id.
-    parent = f"projects/{project}"
-
-    # Construct the `table`. For more details on the table schema, please see
-    # https://cloud.google.com/dlp/docs/reference/rest/v2/ContentItem#Table
-    headers = [{"name": val} for val in table_data["header"]]
-    rows = []
-    for row in table_data["rows"]:
-        rows.append({"values": [{"string_value": cell_val} for cell_val in row]})
-
-    table = {"headers": headers, "rows": rows}
-
-    # Construct the `item`.
-    item = {"table": table}
-
-    # Construct fixed sized bucketing configuration
-    fixed_size_bucketing_config = {
-        "bucket_size": bucket_size,
-        "lower_bound": {"integer_value": bucketing_lower_bound},
-        "upper_bound": {"integer_value": bucketing_upper_bound},
-    }
-
-    # Specify fields to be de-identified
-    deid_content_list = [{"name": _i} for _i in deid_content_list]
-
-    # Construct Deidentify Config
-    deidentify_config = {
-        "record_transformations": {
-            "field_transformations": [
-                {
-                    "fields": deid_content_list,
-                    "primitive_transformation": {
-                        "fixed_size_bucketing_config": fixed_size_bucketing_config
-                    },
-                }
-            ]
-        }
-    }
-
-    # Call the API.
-    response = dlp.deidentify_content(
-        request={"parent": parent, "deidentify_config": deidentify_config, "item": item}
-    )
-
-    # Print the results.
-    print(f"Table after de-identification: {response.item.table}")
-
-    # Return the response.
-    return response.item.table
-
-
-# [END dlp_deidentify_table_bucketing]
-
-
-# [START dlp_deidentify_table_condition_infotypes]
-from typing import Dict, List, Union  # noqa: F811, E402, I100
-
-import google.cloud.dlp  # noqa: F811, E402
-from google.cloud.dlp_v2 import types  # noqa: F811, E402
-
-
-def deidentify_table_condition_replace_with_info_types(
-    project: str,
-    table_data: Dict[str, Union[List[str], List[List[str]]]],
-    deid_content_list: List[str],
-    info_types: List[str],
-    condition_field: str = None,
-    condition_operator: str = None,
-    condition_value: int = None,
-) -> types.dlp.Table:
-    """Uses the Data Loss Prevention API to de-identify sensitive data in a
-    table by replacing them with info-types based on a condition.
-    Args:
-       project: The Google Cloud project id to use as a parent resource.
-       table_data: Json string representing table data.
-       deid_content_list: A list of fields in table to de-identify.
-       info_types: A list of strings representing info types to look for.
-           A full list of info categories and types is available from the API.
-           Examples include "FIRST_NAME", "LAST_NAME", "EMAIL_ADDRESS". '
-       condition_field: A table field within the record this condition is evaluated against.
-       condition_operator: Operator used to compare the field or infoType to the value. One of:
-           RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS,
-           LESS_THAN_OR_EQUALS, EXISTS.
-       condition_value: Value to compare against. [Mandatory, except for ``EXISTS`` tests.].
-
-    Returns:
-       De-identified table is returned;
-       the response from the API is also printed to the terminal.
-
-    Example:
-    >> $ python deid.py deid_table_condition_replace \
-    '{"header": ["email", "phone number", "age"],
-    "rows": [["robertfrost@example.com", "4232342345", "45"],
-    ["johndoe@example.com", "4253458383", "63"]]}' ["email"] \
-    ["EMAIL_ADDRESS"] "age" "GREATER_THAN" 50
-    >> '{"header": ["email", "phone number", "age"],
-        "rows": [["robertfrost@example.com", "4232342345", "45"],
-        ["[EMAIL_ADDRESS]", "4253458383", "63"]]}'
-    """
-
-    # Instantiate a client.
-    dlp = google.cloud.dlp_v2.DlpServiceClient()
-
-    # Construct the `table`. For more details on the table schema, please see
-    # https://cloud.google.com/dlp/docs/reference/rest/v2/ContentItem#Table
-    headers = [{"name": val} for val in table_data["header"]]
-    rows = []
-    for row in table_data["rows"]:
-        rows.append({"values": [{"string_value": cell_val} for cell_val in row]})
-
-    table = {"headers": headers, "rows": rows}
-
-    # Construct the item
-    item = {"table": table}
-
-    # Specify fields to be de-identified
-    deid_field_list = [{"name": _i} for _i in deid_content_list]
-
-    # Construct inspect configuration dictionary
-    inspect_config = {"info_types": [{"name": info_type} for info_type in info_types]}
-
-    # Construct condition list
-    condition = [
-        {
-            "field": {"name": condition_field},
-            "operator": condition_operator,
-            "value": {"integer_value": condition_value},
-        }
-    ]
-
-    # Construct deidentify configuration dictionary
-    deidentify_config = {
-        "record_transformations": {
-            "field_transformations": [
-                {
-                    "info_type_transformations": {
-                        "transformations": [
-                            {
-                                "primitive_transformation": {
-                                    "replace_with_info_type_config": {}
-                                }
-                            }
-                        ]
-                    },
-                    "fields": deid_field_list,
-                    "condition": {
-                        "expressions": {"conditions": {"conditions": condition}}
-                    },
-                }
-            ]
-        }
-    }
-
-    # Convert the project id into a full resource id.
-    parent = f"projects/{project}"
-
-    # Call the API.
-    response = dlp.deidentify_content(
-        request={
-            "parent": parent,
-            "deidentify_config": deidentify_config,
-            "item": item,
-            "inspect_config": inspect_config,
-        }
-    )
-
-    print(f"Table after de-identification: {response.item.table}")
-
-    return response.item.table
-
-
-# [END dlp_deidentify_table_condition_infotypes]
-
-
-# [START dlp_deidentify_table_condition_masking]
-from typing import Dict, List, Union  # noqa: F811, E402, I100
-
-import google.cloud.dlp  # noqa: F811, E402
-from google.cloud.dlp_v2 import types  # noqa: F811, E402
-
-
-def deidentify_table_condition_masking(
-    project: str,
-    table_data: Dict[str, Union[List[str], List[List[str]]]],
-    deid_content_list: List[str],
-    condition_field: str = None,
-    condition_operator: str = None,
-    condition_value: int = None,
-    masking_character: str = None,
-) -> types.dlp.Table:
-    """ Uses the Data Loss Prevention API to de-identify sensitive data in a
-      table by masking them based on a condition.
-
-    Args:
-        project: The Google Cloud project id to use as a parent resource.
-        table_data: Json string representing table data.
-        deid_content_list: A list of fields in table to de-identify.
-        condition_field: A table Field within the record this condition is evaluated against.
-        condition_operator: Operator used to compare the field or infoType to the value. One of:
-            RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS,
-            LESS_THAN_OR_EQUALS, EXISTS.
-        condition_value: Value to compare against. [Mandatory, except for ``EXISTS`` tests.].
-        masking_character: The character to mask matching sensitive data with.
-
-    Returns:
-        De-identified table is returned;
-        the response from the API is also printed to the terminal.
-
-    Example:
-    >> $ python deid.py deid_table_condition_mask \
-    '{"header": ["email", "phone number", "age", "happiness_score"],
-    "rows": [["robertfrost@example.com", "4232342345", "35", "21"],
-    ["johndoe@example.com", "4253458383", "64", "34"]]}' \
-    ["happiness_score"] "age" "GREATER_THAN" 50
-    >> '{"header": ["email", "phone number", "age", "happiness_score"],
-        "rows": [["robertfrost@example.com", "4232342345", "35", "21"],
-        ["johndoe@example.com", "4253458383", "64", "**"]]}'
-    """
-
-    # Instantiate a client.
-    dlp = google.cloud.dlp_v2.DlpServiceClient()
-
-    # Construct the `table`. For more details on the table schema, please see
-    # https://cloud.google.com/dlp/docs/reference/rest/v2/ContentItem#Table
-    headers = [{"name": val} for val in table_data["header"]]
-    rows = []
-    for row in table_data["rows"]:
-        rows.append({"values": [{"string_value": cell_val} for cell_val in row]})
-
-    table = {"headers": headers, "rows": rows}
-
-    # Construct the `item`
-    item = {"table": table}
-
-    # Specify fields to be de-identified
-    deid_content_list = [{"name": _i} for _i in deid_content_list]
-
-    # Construct condition list
-    condition = [
-        {
-            "field": {"name": condition_field},
-            "operator": condition_operator,
-            "value": {"integer_value": condition_value},
-        }
-    ]
-
-    # Construct deidentify configuration dictionary
-    deidentify_config = {
-        "record_transformations": {
-            "field_transformations": [
-                {
-                    "primitive_transformation": {
-                        "character_mask_config": {
-                            "masking_character": masking_character
-                        }
-                    },
-                    "fields": deid_content_list,
-                    "condition": {
-                        "expressions": {"conditions": {"conditions": condition}}
-                    },
-                }
-            ]
-        }
-    }
-
-    # Convert the project id into a full resource id.
-    parent = f"projects/{project}"
-
-    # Call the API.
-    response = dlp.deidentify_content(
-        request={"parent": parent, "deidentify_config": deidentify_config, "item": item}
-    )
-
-    # Print the result
-    print(f"Table after de-identification: {response.item.table}")
-
-    # Return the response
-    return response.item.table
-
-
-# [END dlp_deidentify_table_condition_masking]
-
-
-# [START dlp_deidentify_table_infotypes]
-from typing import Dict, List, Union  # noqa: F811, E402, I100
-
-import google.cloud.dlp  # noqa: F811, E402
-
-
-def deidentify_table_replace_with_info_types(
-    project: str,
-    table_data: Dict[str, Union[List[str], List[List[str]]]],
-    info_types: List[str],
-    deid_content_list: List[str],
-) -> None:
-    """ Uses the Data Loss Prevention API to de-identify sensitive data in a
-      table by replacing them with info type.
-
-    Args:
-        project: The Google Cloud project id to use as a parent resource.
-        table_data: Json string representing table data.
-        info_types: A list of strings representing info types to look for.
-            A full list of info type categories can be fetched from the API.
-        deid_content_list: A list of fields in table to de-identify
-
-    Returns:
-        None; the response from the API is printed to the terminal.
-
-    Example:
-    >> $ python deid.py table_replace_with_infotype \
-    '{
-        "header": ["name", "email", "phone number"],
-        "rows": [
-            ["Robert Frost", "robertfrost@example.com", "4232342345"],
-            ["John Doe", "johndoe@example.com", "4253458383"]
-        ]
-    }' \
-    ["PERSON_NAME"] ["name"]
-    >> '{
-            "header": ["name", "email", "phone number"],
-            "rows": [
-                ["[PERSON_NAME]", "robertfrost@example.com", "4232342345"],
-                ["[PERSON_NAME]", "johndoe@example.com", "4253458383"]
-            ]
-        }'
-    """
-
-    # Instantiate a client.
-    dlp = google.cloud.dlp_v2.DlpServiceClient()
-
-    # Construct the `table`. For more details on the table schema, please see
-    # https://cloud.google.com/dlp/docs/reference/rest/v2/ContentItem#Table
-    headers = [{"name": val} for val in table_data["header"]]
-    rows = []
-    for row in table_data["rows"]:
-        rows.append({"values": [{"string_value": cell_val} for cell_val in row]})
-
-    table = {"headers": headers, "rows": rows}
-
-    # Construct item
-    item = {"table": table}
-
-    # Specify fields to be de-identified
-    deid_content_list = [{"name": _i} for _i in deid_content_list]
-
-    # Construct inspect configuration dictionary
-    inspect_config = {"info_types": [{"name": info_type} for info_type in info_types]}
-
-    # Construct deidentify configuration dictionary
-    deidentify_config = {
-        "record_transformations": {
-            "field_transformations": [
-                {
-                    "info_type_transformations": {
-                        "transformations": [
-                            {
-                                "primitive_transformation": {
-                                    "replace_with_info_type_config": {}
-                                }
-                            }
-                        ]
-                    },
-                    "fields": deid_content_list,
-                }
-            ]
-        }
-    }
-
-    # Convert the project id into a full resource id.
-    parent = f"projects/{project}"
-
-    # Call the API.
-    response = dlp.deidentify_content(
-        request={
-            "parent": parent,
-            "deidentify_config": deidentify_config,
-            "item": item,
-            "inspect_config": inspect_config,
-        }
-    )
-
-    # Print the result
-    print(f"Table after de-identification: {response.item.table}")
-
-
-# [END dlp_deidentify_table_infotypes]
-
-
 # [START dlp_deidentify_dictionary_replacement]
 from typing import List  # noqa: F811, E402, I100
 
@@ -1571,7 +1351,6 @@ def deindentify_with_dictionary_replacement(
     info_types: List[str],
     word_list: List[str],
 ) -> None:
-
     """Uses the Data Loss Prevention API to de-identify sensitive data in a
     string by replacing each piece of detected sensitive data with a value
     that Cloud DLP randomly selects from a list of words that you provide.
@@ -1595,10 +1374,8 @@ def deindentify_with_dictionary_replacement(
                 {
                     "info_types": info_types,
                     "primitive_transformation": {
-                        "replace_dictionary_config": {
-                            "word_list": {"words": word_list}
-                        }
-                    }
+                        "replace_dictionary_config": {"word_list": {"words": word_list}}
+                    },
                 }
             ]
         }
@@ -1625,99 +1402,6 @@ def deindentify_with_dictionary_replacement(
 
 
 # [END dlp_deidentify_dictionary_replacement]
-
-
-# [START dlp_deidentify_table_row_suppress]
-from typing import Dict, List, Union  # noqa: F811, E402, I100
-
-import google.cloud.dlp  # noqa: F811, E402
-
-
-def deidentify_table_suppress_row(
-    project: str,
-    table_data: Dict[str, Union[List[str], List[List[str]]]],
-    condition_field: str,
-    condition_operator: str,
-    condition_value: int,
-) -> None:
-    """ Uses the Data Loss Prevention API to de-identify sensitive data in a
-      table by suppressing entire row/s based on a condition.
-
-    Args:
-        project: The Google Cloud project id to use as a parent resource.
-        table_data: Dictionary representing table data.
-        condition_field: A table field within the record this condition is evaluated against.
-        condition_operator: Operator used to compare the field or infoType to the value. One of:
-            RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS,
-            LESS_THAN_OR_EQUALS, EXISTS.
-        condition_value: Value to compare against. [Mandatory, except for ``EXISTS`` tests.].
-
-    Example:
-
-    >> $ python deid.py deid_table_row_suppress \
-    '{"header": ["email", "phone number", "age"],
-    "rows": [["robertfrost@example.com", "4232342345", "35"],
-    ["johndoe@example.com", "4253458383", "64"]]}' \
-    "age" "GREATER_THAN" 50
-    >> '{"header": ["email", "phone number", "age"],
-        "rows": [["robertfrost@example.com", "4232342345", "35", "21"]]}'
-    """
-
-    # Instantiate a client.
-    dlp = google.cloud.dlp_v2.DlpServiceClient()
-
-    # Construct the `table`. For more details on the table schema, please see
-    # https://cloud.google.com/dlp/docs/reference/rest/v2/ContentItem#Table
-    headers = [{"name": val} for val in table_data["header"]]
-    rows = []
-    for row in table_data["rows"]:
-        rows.append({"values": [{"string_value": cell_val} for cell_val in row]})
-
-    table = {"headers": headers, "rows": rows}
-
-    # Construct the `item` containing the table data.
-    item = {"table": table}
-
-    # Construct condition list.
-    condition = [
-        {
-            "field": {"name": condition_field},
-            "operator": condition_operator,
-            "value": {"integer_value": condition_value}
-        }
-    ]
-
-    # Construct deidentify configuration dictionary
-    deidentify_config = {
-        "record_transformations": {
-            "record_suppressions": [
-                {
-                    "condition": {
-                        "expressions": {
-                            "conditions": {"conditions": condition}
-                        }
-                    }
-                }
-            ]
-        }
-    }
-
-    # Convert the project id into a full resource id.
-    parent = f"projects/{project}"
-
-    # Call the API.
-    response = dlp.deidentify_content(
-        request={
-            "parent": parent,
-            "deidentify_config": deidentify_config,
-            "item": item
-        })
-
-    # Print the result.
-    print("Table after de-identification: {}".format(response.item.table))
-
-
-# [END dlp_deidentify_table_row_suppress]
 
 
 if __name__ == "__main__":
@@ -1931,6 +1615,30 @@ if __name__ == "__main__":
         "key_name.",
     )
 
+    time_extract_parser = subparsers.add_parser(
+        "deid_time_extract",
+        help="Deidentify dates in a CSV file by extracting a date part.",
+    )
+    time_extract_parser.add_argument(
+        "project",
+        help="The Google Cloud project id to use as a parent resource.",
+    )
+    time_extract_parser.add_argument(
+        "input_csv_file",
+        help="The path to the CSV file to deidentify. The first row of the "
+        "file must specify column names, and all other rows must contain "
+        "valid values.",
+    )
+    time_extract_parser.add_argument(
+        "date_fields",
+        nargs="+",
+        help="The list of date fields in the CSV file to de-identify. Example: "
+        "['birth_date', 'register_date']",
+    )
+    time_extract_parser.add_argument(
+        "output_csv_file", help="The path to save the time-extracted data."
+    )
+
     replace_with_infotype_parser = subparsers.add_parser(
         "replace_with_infotype",
         help="Deidentify sensitive data in a string by replacing it with the "
@@ -2000,136 +1708,6 @@ if __name__ == "__main__":
         help="The list of strings to ignore matches against.",
     )
 
-    table_bucketing_parser = subparsers.add_parser(
-        "deid_table_bucketing",
-        help="De-identify sensitive data in a table by replacing "
-        "them with fixed size bucket ranges.",
-    )
-    table_bucketing_parser.add_argument(
-        "--project",
-        help="The Google Cloud project id to use as a parent resource.",
-    )
-    table_bucketing_parser.add_argument(
-        "--table_data",
-        help="Json string representing table data",
-    )
-    table_bucketing_parser.add_argument(
-        "--deid_content_list", help="A list of fields in table to de-identify."
-    )
-    table_bucketing_parser.add_argument(
-        "--bucket_size",
-        help="Size of each bucket for fixed sized bucketing.",
-    )
-    table_bucketing_parser.add_argument(
-        "--bucketing_lower_bound",
-        help="Lower bound value of buckets.",
-    )
-    table_bucketing_parser.add_argument(
-        "--bucketing_upper_bound",
-        help="Upper bound value of buckets.",
-    )
-
-    table_condition_replace_parser = subparsers.add_parser(
-        "deid_table_condition_replace",
-        help="De-identify sensitive data in a table by replacing "
-        "them with info-types based on a condition.",
-    )
-    table_condition_replace_parser.add_argument(
-        "project",
-        help="The Google Cloud project id to use as a parent resource.",
-    )
-    table_condition_replace_parser.add_argument(
-        "table_data",
-        help="Json string representing table data",
-    )
-    table_condition_replace_parser.add_argument(
-        "deid_content_list", help="A list of fields in table to de-identify."
-    )
-    table_condition_replace_parser.add_argument(
-        "--info_types",
-        nargs="+",
-        help="Strings representing info types to look for. A full list of "
-        "info categories and types is available from the API. Examples "
-        'include "FIRST_NAME", "LAST_NAME", "EMAIL_ADDRESS". ',
-    )
-    table_condition_replace_parser.add_argument(
-        "--condition_field",
-        help="A table Field within the record this condition is evaluated " "against.",
-    )
-    table_condition_replace_parser.add_argument(
-        "--condition_operator",
-        help="Operator used to compare the field or infoType to the value. "
-        "One of: RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, "
-        "GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS, LESS_THAN_OR_EQUALS, "
-        "EXISTS.",
-    )
-    table_condition_replace_parser.add_argument(
-        "--condition_value",
-        help="Value to compare against. [Mandatory, except for ``EXISTS`` tests.].",
-    )
-
-    table_condition_mask_parser = subparsers.add_parser(
-        "deid_table_condition_mask",
-        help="De-identify sensitive data in a table by masking"
-        "them based on a condition.",
-    )
-    table_condition_mask_parser.add_argument(
-        "project",
-        help="The Google Cloud project id to use as a parent resource.",
-    )
-    table_condition_mask_parser.add_argument(
-        "table_data",
-        help="Json string representing table data",
-    )
-    table_condition_mask_parser.add_argument(
-        "deid_content_list", help="A list of fields in table to de-identify."
-    )
-    table_condition_mask_parser.add_argument(
-        "--condition_field",
-        help="A table Field within the record this condition is evaluated " "against.",
-    )
-    table_condition_mask_parser.add_argument(
-        "--condition_operator",
-        help="Operator used to compare the field or infoType to the value. "
-        "One of: RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, "
-        "GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS, LESS_THAN_OR_EQUALS, "
-        "EXISTS.",
-    )
-    table_condition_mask_parser.add_argument(
-        "--condition_value",
-        help="Value to compare against. [Mandatory, except for ``EXISTS`` tests.].",
-    )
-    table_condition_mask_parser.add_argument(
-        "-m",
-        "--masking_character",
-        help="The character to mask matching sensitive data with.",
-    )
-
-    table_replace_with_infotype_parser = subparsers.add_parser(
-        "table_replace_with_infotype",
-        help="De-identify sensitive data in a table by replacing it with the "
-        "info type of the data.",
-    )
-    table_replace_with_infotype_parser.add_argument(
-        "project",
-        help="The Google Cloud project id to use as a parent resource.",
-    )
-    table_replace_with_infotype_parser.add_argument(
-        "table_data",
-        help="Json string representing a table.",
-    )
-    table_replace_with_infotype_parser.add_argument(
-        "--info_types",
-        action="append",
-        help="Strings representing info types to look for. A full list of "
-        "info categories and types is available from the API. Examples "
-        'include "FIRST_NAME", "LAST_NAME", "EMAIL_ADDRESS". ',
-    )
-    table_replace_with_infotype_parser.add_argument(
-        "deid_content_list",
-        help="A list of fields in table to de-identify.",
-    )
-
     replace_from_dictionary_parser = subparsers.add_parser(
         "dictionary_replacement",
         help="De-identify sensitive data in a string by replacing it with a "
@@ -2152,36 +1730,6 @@ if __name__ == "__main__":
     )
     replace_from_dictionary_parser.add_argument(
         "word_list", help="List of words or phrases to search for in the data."
-    )
-
-    table_row_suppress_parser = subparsers.add_parser(
-        "deid_table_row_suppress",
-        help="De-identify sensitive data in a table by suppressing "
-        "entire row/s based on a condition.",
-    )
-    table_row_suppress_parser.add_argument(
-        "project",
-        help="The Google Cloud project id to use as a parent resource.",
-    )
-    table_row_suppress_parser.add_argument(
-        "table_data",
-        help="Json string representing table data",
-    )
-    table_row_suppress_parser.add_argument(
-        "--condition_field",
-        help="A table Field within the record this condition is evaluated "
-        "against.",
-    )
-    table_row_suppress_parser.add_argument(
-        "--condition_operator",
-        help="Operator used to compare the field or infoType to the value. "
-        "One of: RELATIONAL_OPERATOR_UNSPECIFIED, EQUAL_TO, NOT_EQUAL_TO, "
-        "GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUALS, LESS_THAN_OR_EQUALS, "
-        "EXISTS.",
-    )
-    table_row_suppress_parser.add_argument(
-        "--condition_value",
-        help="Value to compare against. [Mandatory, except for ``EXISTS`` tests.].",
     )
 
     args = parser.parse_args()
@@ -2211,6 +1759,13 @@ if __name__ == "__main__":
             key_name=args.key_name,
             surrogate_type=args.surrogate_type,
         )
+    elif args.content == "reid_text_fpe":
+        reidentify_text_with_fpe(
+            args.project,
+            args.item,
+            wrapped_key=args.wrapped_key,
+            key_name=args.key_name,
+        )
     elif args.content == "reid_fpe":
         reidentify_with_fpe(
             args.project,
@@ -2232,6 +1787,13 @@ if __name__ == "__main__":
             wrapped_key=args.wrapped_key,
             key_name=args.key_name,
         )
+    elif args.content == "deid_time_extract":
+        deidentify_with_time_extract(
+            args.project,
+            date_fields=args.date_fields,
+            input_csv_file=args.input_csv_file,
+            output_csv_file=args.output_csv_file,
+        )
     elif args.content == "replace_with_infotype":
         deidentify_with_replace_infotype(
             args.project,
@@ -2252,54 +1814,10 @@ if __name__ == "__main__":
             args.info_types,
             args.exception_list,
         )
-    elif args.content == "deid_table_bucketing":
-        deidentify_table_bucketing(
-            args.project,
-            args.table_data,
-            args.deid_content_list,
-            args.bucket_size,
-            args.bucketing_lower_bound,
-            args.bucketing_upper_bound,
-        )
-    elif args.content == "deid_table_condition_replace":
-        deidentify_table_condition_replace_with_info_types(
-            args.project,
-            args.table_data,
-            args.deid_content_list,
-            args.info_types,
-            condition_field=args.condition_field,
-            condition_operator=args.condition_operator,
-            condition_value=args.condition_value,
-        )
-    elif args.content == "deid_table_condition_mask":
-        deidentify_table_condition_masking(
-            args.project,
-            args.table_data,
-            args.deid_content_list,
-            condition_field=args.condition_field,
-            condition_operator=args.condition_operator,
-            condition_value=args.condition_value,
-            masking_character=args.masking_character,
-        )
-    elif args.content == "table_replace_with_infotype":
-        deidentify_table_replace_with_info_types(
-            args.project,
-            args.table_data,
-            args.info_types,
-            args.deid_content_list,
-        )
     elif args.content == "dictionary_replacement":
         deindentify_with_dictionary_replacement(
             args.project,
             args.input_str,
             args.info_types,
             args.word_list,
-        )
-    elif args.content == "deid_table_row_suppress":
-        deidentify_table_suppress_row(
-            args.project,
-            args.table_data,
-            condition_field=args.condition_field,
-            condition_operator=args.condition_operator,
-            condition_value=args.condition_value,
         )

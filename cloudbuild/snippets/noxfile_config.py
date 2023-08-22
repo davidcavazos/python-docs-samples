@@ -23,7 +23,7 @@
 TEST_CONFIG_OVERRIDE = {
     # You can opt out from the test for specific Python versions.
     # NOTE: We currently only run the test in Python 3.8.
-    "ignored_versions": ["2.7"],
+    "ignored_versions": ["2.7", "3.7", "3.9", "3.10"],
     # Old samples are opted out of enforcing Python type hints
     # All new samples should feature them
     "enforce_type_hints": True,
@@ -35,6 +35,5 @@ TEST_CONFIG_OVERRIDE = {
     # 'gcloud_project_env': 'BUILD_SPECIFIC_GCLOUD_PROJECT',
     # A dictionary you want to inject into your test. Don't put any
     # secrets here. These values will override predefined values.
-    "envs": {
-    },
+    "envs": {},
 }

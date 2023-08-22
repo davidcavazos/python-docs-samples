@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# [START functions_cloudevent_storage_unit_test]
 
 from cloudevents.http import CloudEvent
 import pytest
@@ -37,7 +38,15 @@ def test_functions_eventsource_storage(capsys: pytest.LogCaptureFixture) -> None
 
     event = CloudEvent(attributes, data)
 
-    event_id, event_type, bucket, name, metageneration, timeCreated, updated = main.hello_gcs(event)
+    (
+        event_id,
+        event_type,
+        bucket,
+        name,
+        metageneration,
+        timeCreated,
+        updated,
+    ) = main.hello_gcs(event)
 
     out, _ = capsys.readouterr()
     assert "5e9f24a" in event_id
@@ -47,3 +56,6 @@ def test_functions_eventsource_storage(capsys: pytest.LogCaptureFixture) -> None
     assert metageneration == 1
     assert "2021-10-10 00:00:00.000000Z" in timeCreated
     assert "2021-11-11 00:00:00.000000Z" in updated
+
+
+# [END functions_cloudevent_storage_unit_test]

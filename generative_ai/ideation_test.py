@@ -12,13 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 import backoff
 from google.api_core.exceptions import ResourceExhausted
 
 import ideation
 
 
-interview_expected_response = '''1. What is your experience with project management?
+_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+_LOCATION = "us-central1"
+
+
+interview_expected_response = """1. What is your experience with project management?
 2. What is your process for managing a project?
 3. How do you handle unexpected challenges or roadblocks?
 4. How do you communicate with stakeholders?
@@ -27,10 +33,12 @@ interview_expected_response = '''1. What is your experience with project managem
 7. What are your salary expectations?
 8. What are your career goals?
 9. Why are you interested in this position?
-10. What questions do you have for me?'''
+10. What questions do you have for me?"""
 
 
 @backoff.on_exception(backoff.expo, ResourceExhausted, max_time=10)
 def test_interview() -> None:
-    content = ideation.interview(temperature=0).text
+    content = ideation.interview(
+        temperature=0, project_id=_PROJECT_ID, location=_LOCATION
+    )
     assert content == interview_expected_response

@@ -15,7 +15,21 @@
 import numpy as np
 import tensorflow as tf
 
+<<<<<<< HEAD:people-and-planet-ai/land-cover-classification/src/io-numpy/io_numpy/tf_dataset.py
 
 def load(file_path: str) -> dict[str, tf.Tensor]:
     arr = np.load(file_path)
     return {name: tf.convert_to_tensor(arr[name]) for name in arr.dtype.names}
+=======
+# Requirements for the Dataflow dataset creation pipeline.
+setup(
+    name="ppai-landcover-classification",
+    url="https://github.com/GoogleCloudPlatform/python-docs-samples/tree/main/people-and-planet-ai/land-cover-classification",
+    packages=["serving"],
+    install_requires=[
+        "apache-beam[gcp]==2.46.0",
+        "earthengine-api==0.1.358",
+        "tensorflow==2.12.0",
+    ],
+)
+>>>>>>> 747dfe4772807025011e305d4b95314aa229c3c7:people-and-planet-ai/land-cover-classification/setup.py
