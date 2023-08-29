@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
-from safetensors.numpy import load_file
+# https://peps.python.org/pep-0621
+[project]
+name = "landcover"
+version = "1.0.0"
+dependencies = ["earthengine-api==0.1.364"]
 
-
-def load(file_path: str) -> dict[str, np.ndarray]:
-    return load_file(file_path)
+[project.optional-dependencies]
+dataset = ["apache-beam[gcp]==2.49.0"]

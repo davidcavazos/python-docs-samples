@@ -20,9 +20,7 @@ The model is a simple Fully Convolutional Network (FCN).
 from __future__ import annotations
 
 import tensorflow as tf
-
-import huggingface_dataset
-import tensorflow_dataset
+import numpy as np
 
 # Default values.
 EPOCHS = 100
@@ -202,25 +200,31 @@ def run(
     return model
 
 
+def clamp(value: float, min_value: float, max_value: float) -> float:
+    """Clamps a value between a minimum and maximum value.
+
+    Args:
+        value: The value to clamp.
+        min: The minimum value.
+        max: The maximum value.
+
+    Returns: The clamped value.
+    """
+    return min(max(value, min_value), max_value)
+
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--data-files-pattern",
-        required=True,
-        help="Local or Cloud Storage glob pattern to match the data files.",
-    )
-    parser.add_argument(
-        "--dataset-type",
-        default="tensorflow",
-        choices=["tensorflow", "huggingface"],
-        help="Dataset library to load the data files.",
+        "dataset",
+        help="Local or Cloud Storage directory for dataset files.",
     )
     parser.add_argument(
         "--train-split",
         default=0.9,
-        type=float,
+        type=lambda x: clamp(float(x), 0, 1),
         help="Percentage of data files to use for training, between 0 and 1.",
     )
     # parser.add_argument(
@@ -259,64 +263,29 @@ if __name__ == "__main__":
     # )
     args = parser.parse_args()
 
-    filenames = tf.io.gfile.glob(args.data_files_pattern)
+    filenames = [
+        tf.io.gfile.join(args.dataset, filename)
+        for filename in tf.io.gfile.listdir(args.dataset)
+    ]
 
-    # Split the data files into training and validation.
-    split_idx = int(len(filenames) * args.train_split)
+    # Split the dataset into training and validation subsets.
+    split_idx = int(clamp(len(filenames) * args.train_split, 1, len(filenames) - 1))
     train_files = filenames[:split_idx]
     validation_files = filenames[split_idx:]
 
-    # Load the data files into a tf.data.Dataset.
-    extensions = {filename.split(".", 1)[-1] for filename in filenames}
-    match (list(extensions), args.dataset_type):
-        case (["npz"], "tensorflow"):
-            train_dataset = tensorflow_dataset.from_numpy_files(train_files)
-            validation_dataset = tensorflow_dataset.from_numpy_files(validation_files)
+    # train_dataset = dataset_from_numpy(train_files)
+    train_dataset = read_dataset(filenames)
+    for x in train_dataset:
+        print(x)
+    print(len(train_dataset))
+    # validation_dataset = tensorflow_dataset.from_numpy_files(validation_files)
 
-        case (["npz"], "huggingface"):
-            train_dataset = huggingface_dataset.from_numpy(train_files).to_tf_dataset()
-            validation_dataset = huggingface_dataset.from_numpy(
-                validation_files
-            ).to_tf_dataset()
+    # import huggingface_dataset
 
-        case ([], pattern):
-            raise ValueError(f"No files matched the pattern: {pattern}")
-
-        case ([ext], _):
-            raise ValueError(f"File extension not supported: {ext}")
-
-        case (exts, pattern):
-            raise ValueError(
-                f"Multiple file extensions {exts} match the pattern: {pattern}\n"
-                "Try including the desired file extension into the pattern."
-            )
-
-        case (_, dataset_type):
-            raise ValueError(f"Dataset type not supported: {dataset_type}")
-
-    # match args.file_format.split("."):
-    #     case ["numpy"]:
-    #         from io_numpy.tf_dataset import load_dataset
-
-    #         dataset = load_dataset(args.data_files_pattern)
-
-    #     case ["tensorflow"]:
-    #         from io_tensorflow.tf_dataset import load_dataset
-
-    #         dataset = load_dataset(args.data_files_pattern)
-
-    #     case ["torch"]:
-    #         from io_torch.tf_dataset import load_dataset
-
-    #         dataset = load_dataset(args.data_files_pattern)
-
-    #     case ["safetensors", tensor_format]:
-    #         from io_safetensors.tf_dataset import load_dataset
-
-    #         dataset = load_dataset(args.data_files_pattern, tensor_format)
-
-    #     case file_format:
-    #         raise ValueError(f"File format not supported: {file_format}")
+    # train_dataset = huggingface_dataset.from_numpy(train_files).to_tf_dataset()
+    # validation_dataset = huggingface_dataset.from_numpy(
+    #     validation_files
+    # ).to_tf_dataset()
 
     # run(
     #     data_path=args.data_path,

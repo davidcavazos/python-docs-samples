@@ -25,3 +25,34 @@ This model uses satellite data to classify what is on Earth. The satellite data 
 [Earth Engine]: https://earthengine.google.com/
 [TensorFlow]: https://www.tensorflow.org/
 [Vertex AI]: https://cloud.google.com/vertex-ai
+
+```sh
+# Create dataset (local)
+pip install "src/landcover[build,dataset]" "src/trainer"
+python -m landcover.dataset.create data/
+
+# Create dataset (Dataflow)
+export PROJECT="My Google Cloud Project ID"
+export BUCKET="My Cloud Storage bucket name"
+export LOCATION="us-central1"
+
+python -m build --sdist src/landcover/ --outdir build/
+python -m landcover.dataset.create gs://$BUCKET/landcover/data \
+  --runner="DataflowRunner" \
+  --project="$PROJECT" \
+  --region="$LOCATION" \
+  --temp_location="gs://$BUCKET/temp" \
+  --requirements_cache="skip" \
+  --extra_package="build/landcover-1.0.0.tar.gz"
+
+# Train model (local)
+pip install "src/landcover" "src/trainer-tensorflow"
+
+# Train model (Vertex AI)
+python -m build --sdist src/landcover/ --outdir build/
+python -m build --sdist src/trainer-tensorflow/ --outdir build/
+
+
+
+# Get predictions
+```

@@ -11,11 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import torch
-import numpy_loader
-
-
-def load(file_path: str) -> dict[str, torch.Tensor]:
-    arr = numpy_loader.load(file_path)
-    return {name: torch.from_numpy(arr[name]) for name in arr.dtype.names}

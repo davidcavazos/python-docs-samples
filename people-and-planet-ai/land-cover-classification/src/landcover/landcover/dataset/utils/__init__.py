@@ -11,11 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# https://peps.python.org/pep-0621
-[project]
-name = "io-torch"
-version = "1.0.0"
-dependencies = [
-    "torch==2.0.1"
-]

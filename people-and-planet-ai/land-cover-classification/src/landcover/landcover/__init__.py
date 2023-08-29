@@ -12,9 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tensorflow as tf
-from safetensors.tensorflow import load_file
-
-
-def load(file_path: str) -> dict[str, tf.Tensor]:
-    return load_file(file_path)
+import landcover.data
