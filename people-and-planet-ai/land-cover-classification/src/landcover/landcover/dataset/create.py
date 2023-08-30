@@ -187,18 +187,21 @@ if __name__ == "__main__":
 
         output_path = FileSystems.join(args.data_path, "examples")
         if args.tfrecords:
-            from landcover.dataset.utils.tf import serialize_tf
+            from landcover.dataset.utils.beam_utils import WriteSchema
+            from landcover.dataset.utils.tf_utils import serialize
 
             _ = (
                 dataset
-                | "✍️ To tf.Example" >> beam.Map(serialize_tf)
+                | "✍️ To tf.Example" >> beam.Map(serialize)
                 | "📝 Write to TFRecords"
                 >> beam.io.WriteToTFRecord(
                     file_path_prefix=output_path,
                     file_name_suffix=".tfrecord.gz",
                 )
             )
+            _ = dataset | "🔑 Write schema" >> WriteSchema(args.output_path)
+
         else:
-            from landcover.dataset.utils.beam_np import WriteToNumPy
+            from landcover.dataset.utils.beam_utils import WriteToNumPy
 
             _ = dataset | "📝 Write to NumPy" >> WriteToNumPy(output_path)

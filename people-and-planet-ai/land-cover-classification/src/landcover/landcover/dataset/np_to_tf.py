@@ -18,8 +18,9 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.filesystems import FileSystems
 
-from landcover.dataset.utils.tf import serialize_tf
-from landcover.dataset.utils.beam_np import ReadFromNumPy
+from landcover.dataset.utils.beam_utils import ReadFromNumPy
+from landcover.dataset.utils.beam_utils import WriteSchema
+from landcover.dataset.utils.tf_utils import serialize
 
 
 if __name__ == "__main__":
@@ -39,17 +40,19 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
 
     input_pattern = FileSystems.join(args.input_path, "*.npz")
-    output_path = FileSystems.join(args.output_path, "examples")
+    output_prefix = FileSystems.join(args.output_path, "examples")
     beam_options = PipelineOptions(beam_args, pickle_library="cloudpickle")
     with beam.Pipeline(options=beam_options) as pipeline:
         dataset = pipeline | "📖 Read NumPy" >> ReadFromNumPy([input_pattern])
 
         _ = (
             dataset
-            | "✍️ To tf.Example" >> beam.Map(serialize_tf)
+            | "✍️ To tf.Example" >> beam.Map(serialize)
             | "📝 Write to TFRecord"
             >> beam.io.WriteToTFRecord(
-                file_path_prefix=output_path,
+                file_path_prefix=output_prefix,
                 file_name_suffix=".tfrecord.gz",
             )
         )
+
+        _ = dataset | "🔑 Write schema" >> WriteSchema(args.output_path)

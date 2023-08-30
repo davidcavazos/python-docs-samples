@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Iterator
+import json
 
 import apache_beam as beam
 from apache_beam.io.filebasedsink import FileBasedSink
@@ -85,3 +86,22 @@ def WriteToNumPy(
     pcoll: beam.PCollection[np.ndarray], file_path_prefix: str, num_shards: int = 0
 ) -> beam.PCollection[str]:
     return pcoll | beam.io.Write(NumPySink(file_path_prefix, num_shards))
+
+
+@beam.ptransform_fn
+def WriteSchema(pcoll: beam.PCollection[str], output_path: str, filename="schema.json"):
+    def write_schema(array: np.ndarray) -> None:
+        output_file = FileSystems.join(output_path, filename)
+        schema = {
+            "shape": array.shape,
+            "dtypes": {name: array.dtype[name].name for name in array.dtype.names},
+        }
+        with FileSystems.create(output_file) as f:
+            f.write(json.dumps(schema, indent=2).encode("utf-8"))
+
+    return (
+        pcoll
+        | beam.combiners.Sample.FixedSizeGlobally(1)
+        | beam.FlatMap(lambda xs: xs)
+        | beam.Map(write_schema)
+    )

@@ -19,150 +19,108 @@ The model is a simple Fully Convolutional Network (FCN).
 
 from __future__ import annotations
 
-import tensorflow as tf
+import json
 import numpy as np
+import tensorflow as tf
+
+from landcover.data import LANDCOVER_NAME
+from landcover.data import LANDCOVER_CLASSES
+from landcover.model.tf_model import create_model
 
 # Default values.
 EPOCHS = 100
 BATCH_SIZE = 512
-KERNEL_SIZE = 5
-
-# Constants.
-NUM_INPUTS = 13
-NUM_CLASSES = 9
-TRAIN_TEST_RATIO = 90  # percent for training, the rest for testing/validation
-SHUFFLE_BUFFER_SIZE = BATCH_SIZE * 8
-FILE_FORMATS = [
-    "numpy",
-    "tensorflow",
-    "torch",
-    "safetensors.numpy",
-    "safetensors.tensorflow",
-    "safetensors.torch",
-]
 
 
-def read_example(serialized: bytes) -> tuple[tf.Tensor, tf.Tensor]:
-    """Parses and reads a training example from TFRecords.
-
-    Args:
-        serialized: Serialized example bytes from TFRecord files.
-
-    Returns: An (inputs, labels) pair of tensors.
-    """
-    features_dict = {
-        "inputs": tf.io.FixedLenFeature([], tf.string),
-        "labels": tf.io.FixedLenFeature([], tf.string),
-    }
-    example = tf.io.parse_single_example(serialized, features_dict)
-    inputs = tf.io.parse_tensor(example["inputs"], tf.float32)
-    labels = tf.io.parse_tensor(example["labels"], tf.uint8)
-
-    # TensorFlow cannot infer the shape's rank, so we set the shapes explicitly.
-    inputs.set_shape([None, None, NUM_INPUTS])
-    labels.set_shape([None, None, 1])
-
-    # Classifications are measured against one-hot encoded vectors.
-    one_hot_labels = tf.one_hot(labels[:, :, 0], NUM_CLASSES)
-    return (inputs, one_hot_labels)
-
-
-def read_dataset(data_path: str) -> tf.data.Dataset:
+def load_dataset(
+    filenames: list[str],
+    data_shape: tuple,
+    data_types: dict[str, tf.DType],
+    batch_size: int,
+) -> tf.data.Dataset:
     """Reads compressed TFRecord files from a directory into a tf.data.Dataset.
 
     Args:
-        data_path: Local or Cloud Storage directory path where the TFRecord files are.
+        filenames: List of local or Cloud Storage TFRecord files paths.
 
     Returns: A tf.data.Dataset with the contents of the TFRecord files.
     """
-    file_pattern = tf.io.gfile.join(data_path, "*.tfrecord.gz")
-    file_names = tf.data.Dataset.list_files(file_pattern).cache()
-    dataset = tf.data.TFRecordDataset(file_names, compression_type="GZIP")
-    return dataset.map(read_example, num_parallel_calls=tf.data.AUTOTUNE)
 
+    def with_shape(tensor: tf.Tensor, shape: tuple) -> tf.Tensor:
+        tensor.set_shape(shape)
+        return tensor
 
-def split_dataset(
-    dataset: tf.data.Dataset,
-    batch_size: int = BATCH_SIZE,
-    train_test_ratio: int = TRAIN_TEST_RATIO,
-) -> tuple[tf.data.Dataset, tf.data.Dataset]:
-    """Splits a dataset into training and validation subsets.
+    def deserialize(serialized: tf.Tensor) -> dict[str, tf.Tensor]:
+        features = {
+            name: tf.io.FixedLenFeature([], tf.string) for name in data_types.keys()
+        }
+        example = tf.io.parse_example(serialized, features)
+        return {
+            name: with_shape(tf.io.parse_tensor(example[name], dtype), data_shape)
+            for name, dtype in data_types.items()
+        }
 
-    Args:
-        dataset: Full dataset with all the training examples.
-        batch_size: Number of examples per training batch.
-        train_test_ratio: Percent of the data to use for training.
+    def preprocess(
+        example: dict[str, tf.Tensor]
+    ) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
+        inputs = example.copy()
+        labels_idx = inputs.pop(LANDCOVER_NAME)
+        labels = tf.one_hot(labels_idx, len(LANDCOVER_CLASSES))
+        return (inputs, labels)
 
-    Returns: A (training, validation) dataset pair.
-    """
-    # For more information on how to optimize your tf.data.Dataset, see:
-    #   https://www.tensorflow.org/guide/data_performance
-    indexed_dataset = dataset.enumerate()  # add an index to each example
-    train_dataset = (
-        indexed_dataset.filter(lambda i, _: i % 100 <= train_test_ratio)
-        .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
-        .cache()  # cache the individual parsed examples
-        .shuffle(SHUFFLE_BUFFER_SIZE)  # randomize the examples for the batches
-        .batch(batch_size)  # batch randomized examples
-        .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
+    dataset = (
+        tf.data.TFRecordDataset(filenames, compression_type="GZIP")
+        .map(deserialize, tf.data.AUTOTUNE)
+        .map(preprocess, tf.data.AUTOTUNE)
+        .batch(batch_size)
+        .prefetch(tf.data.AUTOTUNE)
     )
-    validation_dataset = (
-        indexed_dataset.filter(lambda i, _: i % 100 > train_test_ratio)
-        .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
-        .batch(batch_size)  # batch the parsed examples, no need to shuffle
-        .cache()  # cache the batches of examples
-        .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
-    )
-    return (train_dataset, validation_dataset)
+    return dataset
 
 
-def create_model(
-    dataset: tf.data.Dataset, kernel_size: int = KERNEL_SIZE
-) -> tf.keras.Model:
-    """Creates a Fully Convolutional Network Keras model.
+# def split_dataset(
+#     dataset: tf.data.Dataset,
+#     batch_size: int = BATCH_SIZE,
+#     train_test_ratio: int = TRAIN_TEST_RATIO,
+# ) -> tuple[tf.data.Dataset, tf.data.Dataset]:
+#     """Splits a dataset into training and validation subsets.
 
-    Make sure you pass the *training* dataset, not the validation or full dataset.
+#     Args:
+#         dataset: Full dataset with all the training examples.
+#         batch_size: Number of examples per training batch.
+#         train_test_ratio: Percent of the data to use for training.
 
-    Args:
-        dataset: Training dataset used to normalize inputs.
-        kernel_size: Size of the square of neighboring pixels for the model to look at.
-
-    Returns: A compiled fresh new model (not trained).
-    """
-    # Adapt the preprocessing layers.
-    normalization = tf.keras.layers.Normalization()
-    normalization.adapt(dataset.map(lambda inputs, _: inputs))
-
-    # Define the Fully Convolutional Network.
-    model = tf.keras.Sequential(
-        [
-            tf.keras.Input(shape=(None, None, NUM_INPUTS)),
-            normalization,
-            tf.keras.layers.Conv2D(32, kernel_size, activation="relu"),
-            tf.keras.layers.Conv2DTranspose(16, kernel_size, activation="relu"),
-            tf.keras.layers.Dense(NUM_CLASSES, activation="softmax"),
-        ]
-    )
-    model.compile(
-        optimizer="adam",
-        loss="categorical_crossentropy",
-        metrics=[
-            tf.keras.metrics.OneHotIoU(
-                num_classes=NUM_CLASSES,
-                target_class_ids=list(range(NUM_CLASSES)),
-            )
-        ],
-    )
-    return model
+#     Returns: A (training, validation) dataset pair.
+#     """
+#     # For more information on how to optimize your tf.data.Dataset, see:
+#     #   https://www.tensorflow.org/guide/data_performance
+#     indexed_dataset = dataset.enumerate()  # add an index to each example
+#     train_dataset = (
+#         indexed_dataset.filter(lambda i, _: i % 100 <= train_test_ratio)
+#         .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
+#         .cache()  # cache the individual parsed examples
+#         .shuffle(batch_size * 8)  # randomize the examples for the batches
+#         .batch(batch_size)  # batch randomized examples
+#         .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
+#     )
+#     validation_dataset = (
+#         indexed_dataset.filter(lambda i, _: i % 100 > train_test_ratio)
+#         .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
+#         .batch(batch_size)  # batch the parsed examples, no need to shuffle
+#         .cache()  # cache the batches of examples
+#         .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
+#     )
+#     return (train_dataset, validation_dataset)
 
 
 def run(
-    data_path: str,
+    data_shape: tuple,
+    data_types: dict[str, tf.DType],
+    training_files: list[str],
+    validation_files: list[str],
     model_path: str,
     epochs: int = EPOCHS,
     batch_size: int = BATCH_SIZE,
-    kernel_size: int = KERNEL_SIZE,
-    train_test_ratio: int = TRAIN_TEST_RATIO,
 ) -> tf.keras.Model:
     """Creates and trains the model.
 
@@ -171,32 +129,29 @@ def run(
         model_path: Local or Cloud Storage directory path to store the trained model.
         epochs: Number of times the model goes through the training dataset during training.
         batch_size: Number of examples per training batch.
-        kernel_size: Size of the square of neighboring pixels for the model to look at.
-        train_test_ratio: Percent of the data to use for training.
 
     Returns: The trained model.
     """
-    print(f"data_path: {data_path}")
-    print(f"model_path: {model_path}")
-    print(f"epochs: {epochs}")
-    print(f"batch_size: {batch_size}")
-    print(f"kernel_size: {kernel_size}")
-    print(f"train_test_ratio: {train_test_ratio}")
+    print(f"{len(training_files)=}")
+    print(f"{len(validation_files)=}")
+    print(f"{epochs=}")
+    print(f"{batch_size=}")
     print("-" * 40)
 
-    dataset = read_dataset(data_path)
-    (train_dataset, test_dataset) = split_dataset(dataset, batch_size, train_test_ratio)
+    # Load the training and validation datasets
+    training_dataset = load_dataset(training_files, data_shape, data_types, batch_size)
+    validation_dataset = load_dataset(
+        validation_files, data_shape, data_types, batch_size
+    )
 
-    model = create_model(train_dataset, kernel_size)
-    print(model.summary())
-
+    model = create_model(training_dataset, data_shape, data_types)
     model.fit(
-        train_dataset,
-        validation_data=test_dataset,
+        training_dataset,
+        validation_data=validation_dataset,
         epochs=epochs,
     )
     model.save(model_path)
-    print(f"Model saved to path: {model_path}")
+    print(f"Model saved to: {model_path}")
     return model
 
 
@@ -222,76 +177,48 @@ if __name__ == "__main__":
         help="Local or Cloud Storage directory for dataset files.",
     )
     parser.add_argument(
+        "model_path",
+        help="Local or Cloud Storage directory path to store the trained model.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=EPOCHS,
+        help="Number of times the model goes through the training dataset during training.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZE,
+        help="Number of examples per training batch.",
+    )
+    parser.add_argument(
         "--train-split",
         default=0.9,
         type=lambda x: clamp(float(x), 0, 1),
         help="Percentage of data files to use for training, between 0 and 1.",
     )
-    # parser.add_argument(
-    #     "--data-path",
-    #     required=True,
-    #     help="Local or Cloud Storage directory path where the TFRecord files are.",
-    # )
-    # parser.add_argument(
-    #     "--model-path",
-    #     required=True,
-    #     help="Local or Cloud Storage directory path to store the trained model.",
-    # )
-    # parser.add_argument(
-    #     "--epochs",
-    #     type=int,
-    #     default=EPOCHS,
-    #     help="Number of times the model goes through the training dataset during training.",
-    # )
-    # parser.add_argument(
-    #     "--batch-size",
-    #     type=int,
-    #     default=BATCH_SIZE,
-    #     help="Number of examples per training batch.",
-    # )
-    # parser.add_argument(
-    #     "--kernel-size",
-    #     type=int,
-    #     default=KERNEL_SIZE,
-    #     help="Size of the square of neighboring pixels for the model to look at.",
-    # )
-    # parser.add_argument(
-    #     "--train-test-ratio",
-    #     type=int,
-    #     default=TRAIN_TEST_RATIO,
-    #     help="Percent of the data to use for training.",
-    # )
     args = parser.parse_args()
 
-    filenames = [
-        tf.io.gfile.join(args.dataset, filename)
-        for filename in tf.io.gfile.listdir(args.dataset)
-    ]
+    with tf.io.gfile.GFile(tf.io.gfile.join(args.dataset, "schema.json")) as f:
+        schema = json.load(f)
+        data_shape = tuple(schema["shape"])
+        data_types = {
+            name: tf.dtypes.as_dtype(dtype) for name, dtype in schema["dtypes"].items()
+        }
 
     # Split the dataset into training and validation subsets.
+    filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord.gz")
     split_idx = int(clamp(len(filenames) * args.train_split, 1, len(filenames) - 1))
-    train_files = filenames[:split_idx]
+    training_files = filenames[:split_idx]
     validation_files = filenames[split_idx:]
 
-    # train_dataset = dataset_from_numpy(train_files)
-    train_dataset = read_dataset(filenames)
-    for x in train_dataset:
-        print(x)
-    print(len(train_dataset))
-    # validation_dataset = tensorflow_dataset.from_numpy_files(validation_files)
-
-    # import huggingface_dataset
-
-    # train_dataset = huggingface_dataset.from_numpy(train_files).to_tf_dataset()
-    # validation_dataset = huggingface_dataset.from_numpy(
-    #     validation_files
-    # ).to_tf_dataset()
-
-    # run(
-    #     data_path=args.data_path,
-    #     model_path=args.model_path,
-    #     epochs=args.epochs,
-    #     batch_size=args.batch_size,
-    #     kernel_size=args.kernel_size,
-    #     train_test_ratio=args.train_test_ratio,
-    # )
+    run(
+        data_shape=data_shape,
+        data_types=data_types,
+        training_files=training_files,
+        validation_files=validation_files,
+        model_path=args.model_path,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+    )

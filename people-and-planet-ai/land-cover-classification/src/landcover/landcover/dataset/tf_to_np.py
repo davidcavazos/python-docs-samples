@@ -18,8 +18,8 @@ import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.filesystems import FileSystems
 
-from landcover.dataset.utils.tf import deserialize_tf
-from landcover.dataset.utils.beam_np import WriteToNumPy
+from landcover.dataset.utils.beam_utils import WriteToNumPy
+from landcover.dataset.utils.tf_utils import deserialize
 
 if __name__ == "__main__":
     import argparse

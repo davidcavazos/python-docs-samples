@@ -30,6 +30,8 @@ import numpy as np
 # Constants.
 MAX_ELEVATION = 6000  # found empirically
 ELEVATION_BINS = 10
+
+LANDCOVER_NAME = "landcover"
 LANDCOVER_CLASSES = {
     "💧 Water": "419BDF",
     "🌳 Trees": "397D49",
@@ -130,7 +132,7 @@ def get_land_cover() -> ee.Image:
         ee.Image("ESA/WorldCover/v100/2020")
         .select("Map")
         .remap(fromValues, toValues)
-        .rename("landcover")
+        .rename(LANDCOVER_NAME)
         .unmask(0)  # water
         .uint8()
     )
@@ -166,7 +168,7 @@ def sample_points(
 
     Yields: Tuples of (longitude, latitude) coordinates.
     """
-    land_cover = get_land_cover().select("landcover")
+    land_cover = get_land_cover().select(LANDCOVER_NAME)
     elevation_bins = (
         get_elevation()
         .clamp(0, MAX_ELEVATION)
@@ -201,18 +203,7 @@ def get_example_image() -> ee.Image:
     Returns: An Earth Engine image with the model labels.
     """
     input_image = get_input_image(2020)
-
-    # Remap the ESA classifications into the Dynamic World classifications
-    fromValues = [10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]
-    toValues = [1, 5, 2, 4, 6, 7, 8, 0, 3, 3, 7]
-    label_image = (
-        ee.Image("ESA/WorldCover/v100/2020")
-        .select("Map")
-        .remap(fromValues, toValues)
-        .rename("landcover")
-        .unmask(0)  # water
-        .uint8()
-    )
+    label_image = get_land_cover()
     return ee.Image.cat([input_image, label_image])
 
 
