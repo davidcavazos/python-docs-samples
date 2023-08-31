@@ -28,7 +28,7 @@ from landcover.data import LANDCOVER_CLASSES
 from landcover.model.tf_model import create_model
 
 # Default values.
-EPOCHS = 100
+EPOCHS = 10
 BATCH_SIZE = 512
 
 
@@ -76,41 +76,6 @@ def load_dataset(
         .prefetch(tf.data.AUTOTUNE)
     )
     return dataset
-
-
-# def split_dataset(
-#     dataset: tf.data.Dataset,
-#     batch_size: int = BATCH_SIZE,
-#     train_test_ratio: int = TRAIN_TEST_RATIO,
-# ) -> tuple[tf.data.Dataset, tf.data.Dataset]:
-#     """Splits a dataset into training and validation subsets.
-
-#     Args:
-#         dataset: Full dataset with all the training examples.
-#         batch_size: Number of examples per training batch.
-#         train_test_ratio: Percent of the data to use for training.
-
-#     Returns: A (training, validation) dataset pair.
-#     """
-#     # For more information on how to optimize your tf.data.Dataset, see:
-#     #   https://www.tensorflow.org/guide/data_performance
-#     indexed_dataset = dataset.enumerate()  # add an index to each example
-#     train_dataset = (
-#         indexed_dataset.filter(lambda i, _: i % 100 <= train_test_ratio)
-#         .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
-#         .cache()  # cache the individual parsed examples
-#         .shuffle(batch_size * 8)  # randomize the examples for the batches
-#         .batch(batch_size)  # batch randomized examples
-#         .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
-#     )
-#     validation_dataset = (
-#         indexed_dataset.filter(lambda i, _: i % 100 > train_test_ratio)
-#         .map(lambda _, data: data, num_parallel_calls=tf.data.AUTOTUNE)  # remove index
-#         .batch(batch_size)  # batch the parsed examples, no need to shuffle
-#         .cache()  # cache the batches of examples
-#         .prefetch(tf.data.AUTOTUNE)  # prefetch the next batch
-#     )
-#     return (train_dataset, validation_dataset)
 
 
 def run(

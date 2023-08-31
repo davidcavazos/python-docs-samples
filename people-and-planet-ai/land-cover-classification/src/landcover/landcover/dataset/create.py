@@ -38,11 +38,11 @@ import numpy as np
 import landcover
 
 # Default values.
-NUM_SAMPLES = 1  # TODO: FIND VALUES
+NUM_SAMPLES = 10  # TODO: FIND VALUES
 MAX_REQUESTS = 20  # default EE maximum concurrent request quota
 
 # Constants.
-PATCH_SIZE = 5
+PATCH_SIZE = 9
 
 
 def ee_init() -> None:
@@ -144,8 +144,6 @@ def CreateDataset(
         | "📉 Throttle" >> beam.Reshuffle(num_buckets=max_requests)
         | "📨 Get examples" >> beam.ParDo(GetExample(PATCH_SIZE))
         | "📈 Unthrottle" >> beam.Reshuffle()
-        | beam.combiners.Sample.FixedSizeGlobally(1)
-        | beam.FlatMap(lambda x: x)
     )
 
 
@@ -185,7 +183,7 @@ if __name__ == "__main__":
             max_requests=args.max_requests,
         )
 
-        output_path = FileSystems.join(args.data_path, "examples")
+        output_prefix = FileSystems.join(args.data_path, "examples")
         if args.tfrecords:
             from landcover.dataset.utils.beam_utils import WriteSchema
             from landcover.dataset.utils.tf_utils import serialize
@@ -195,13 +193,13 @@ if __name__ == "__main__":
                 | "✍️ To tf.Example" >> beam.Map(serialize)
                 | "📝 Write to TFRecords"
                 >> beam.io.WriteToTFRecord(
-                    file_path_prefix=output_path,
+                    file_path_prefix=output_prefix,
                     file_name_suffix=".tfrecord.gz",
                 )
             )
-            _ = dataset | "🔑 Write schema" >> WriteSchema(args.output_path)
+            _ = dataset | "🔑 Write schema" >> WriteSchema(args.data_path)
 
         else:
             from landcover.dataset.utils.beam_utils import WriteToNumPy
 
-            _ = dataset | "📝 Write to NumPy" >> WriteToNumPy(output_path)
+            _ = dataset | "📝 Write to NumPy" >> WriteToNumPy(output_prefix)
