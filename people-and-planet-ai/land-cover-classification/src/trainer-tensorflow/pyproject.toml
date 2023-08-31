@@ -16,4 +16,4 @@
 [project]
 name = "trainer"
 version = "1.0.0"
-dependencies = ["datasets==2.14.4"]
+dependencies = ["google-cloud-aiplatform==1.31.1"]
