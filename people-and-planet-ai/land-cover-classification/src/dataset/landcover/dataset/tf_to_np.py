@@ -17,10 +17,16 @@ import logging
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.filesystems import FileSystems
+import numpy as np
+import tensorflow as tf
 
-from landcover.dataset.utils.beam_utils import ReadFromNumPy
-from landcover.dataset.utils.beam_utils import WriteSchema
-from landcover.dataset.utils.tf_utils import serialize
+from landcover.dataset.utils import WriteToNumPy
+from landcover.model import load_schema
+from landcover.model import deserialize
+
+
+def to_numpy(fields: dict[str, tf.Tensor]) -> dict[str, np.ndarray]:
+    return {name: tensor.numpy() for name, tensor in fields.items()}
 
 
 if __name__ == "__main__":
@@ -35,24 +41,23 @@ if __name__ == "__main__":
         "output_path",
         help="Directory path for output TFRecord files.",
     )
+    parser.add_argument("--schema-filename", default="schema.json")
     args, beam_args = parser.parse_known_args()
 
     logging.getLogger().setLevel(logging.INFO)
 
-    input_pattern = FileSystems.join(args.input_path, "*.npz")
-    output_prefix = FileSystems.join(args.output_path, "examples")
+    with FileSystems.open(FileSystems.join(args.input_path, args.schema_filename)) as f:
+        (shape, dtypes) = load_schema(f)
+
+    input_pattern = FileSystems.join(args.input_path, "*.tfrecord.gz")
+    output_path = FileSystems.join(args.output_path, "examples")
     beam_options = PipelineOptions(beam_args, pickle_library="cloudpickle")
     with beam.Pipeline(options=beam_options) as pipeline:
-        dataset = pipeline | "📖 Read NumPy" >> ReadFromNumPy([input_pattern])
-
-        _ = (
-            dataset
-            | "✍️ To tf.Example" >> beam.Map(serialize)
-            | "📝 Write to TFRecord"
-            >> beam.io.WriteToTFRecord(
-                file_path_prefix=output_prefix,
-                file_name_suffix=".tfrecord.gz",
-            )
+        dataset = (
+            pipeline
+            | "📖 Read TFRecords" >> beam.io.ReadFromTFRecord(input_pattern)
+            | "🔍 Deserialize" >> beam.Map(deserialize, shape, dtypes)
+            | "📨 To NumPy" >> beam.Map(to_numpy)
         )
 
-        _ = dataset | "🔑 Write schema" >> WriteSchema(args.output_path)
+        _ = dataset | "📝 Write to NumPy" >> WriteToNumPy(output_path)

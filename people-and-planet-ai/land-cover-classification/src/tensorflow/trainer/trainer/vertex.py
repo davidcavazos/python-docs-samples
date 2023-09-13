@@ -12,52 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 from google.cloud import aiplatform
 
 
-def run(project: str, bucket: str, location: str) -> None:
-    aiplatform.init(project=project, location=location, staging_bucket=bucket)
-
+def run(
+    project: str,
+    bucket: str,
+    location: str,
+    data_path: str,
+    model_path: str,
+) -> None:
     # Ignore the next two lines of code if the experiment you are using already
     # has backing tensorboard instance.
     # tb_instance = aiplatform.Tensorboard.create()
     # aiplatform.init(experiment=experiment, experiment_tensorboard=tb_instance)
-
-    packages = [
-        f"gs://{bucket}/landcover/landcover-1.0.0.tar.gz",
-        f"gs://{bucket}/landcover/trainer-1.0.0.tar.gz",
-    ]
-    data_path = f"gs://{bucket}/landcover/data/tf"
-    model_path = f"gs://{bucket}/landcover/model"
+    aiplatform.init(project=project, location=location, staging_bucket=bucket)
 
     # https://cloud.google.com/vertex-ai/docs/training/pre-built-containers
     job = aiplatform.CustomPythonPackageTrainingJob(
-        display_name="🌍 land-cover",
-        python_package_gcs_uri=packages,
+        display_name="🌍 Land cover",
+        python_package_gcs_uri=[
+            f"gs://{bucket}/landcover/landcover-1.0.0.tar.gz",
+            f"gs://{bucket}/landcover/trainer-1.0.0.tar.gz",
+        ],
         python_module_name="trainer.task",
         container_uri="us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12.py310:latest",
     )
 
-    job.run(
-        args=[data_path, model_path],
-    )
+    job.run(args=[data_path, model_path])
 
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project", required=True, type=str)
-    parser.add_argument("--bucket", required=True, type=str)
-    parser.add_argument("--location", type=str, default="us-central1")
+    parser.add_argument("data_path")
+    parser.add_argument("model_path")
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--bucket", required=True)
+    parser.add_argument("--location", default="us-central")
     args = parser.parse_args()
-
-    logging.getLogger().setLevel(logging.INFO)
 
     run(
         project=args.project,
         bucket=args.bucket,
         location=args.location,
+        data_path=args.data_path,
+        model_path=args.model_path,
     )

@@ -14,9 +14,6 @@
 
 # https://peps.python.org/pep-0621
 [project]
-name = "landcover"
+name = "landcover-tensorflow-model"
 version = "1.0.0"
-dependencies = ["earthengine-api==0.1.364"]
-
-[project.optional-dependencies]
-dataset = ["apache-beam[gcp]==2.49.0"]
+dependencies = ["tensorflow==2.13.0"]

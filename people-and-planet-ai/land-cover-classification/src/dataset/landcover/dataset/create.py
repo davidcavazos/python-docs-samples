@@ -35,7 +35,12 @@ import ee
 import google.auth
 import numpy as np
 
-import landcover
+
+from landcover.dataset.utils import WriteToNumPy
+from landcover.dataset.utils import WriteSchema
+from landcover.inputs import get_example_image
+from landcover.inputs import get_patch
+from landcover.inputs import sample_points
 
 # Default values.
 NUM_SAMPLES = 10  # TODO: FIND VALUES
@@ -82,7 +87,7 @@ class SamplePoints(beam.DoFn):
         return super().setup()
 
     def process(self, seed: int) -> Iterator[tuple[float, float]]:
-        yield from landcover.data.sample_points(seed, self.num_samples, scale=1000)
+        yield from sample_points(seed, self.num_samples, scale=1000)
 
 
 class GetExample(beam.DoFn):
@@ -105,7 +110,7 @@ class GetExample(beam.DoFn):
 
     def setup(self) -> None:
         ee_init()
-        self.image = landcover.data.get_example_image()
+        self.image = get_example_image()
         proj = ee.Projection(self.crs).atScale(10).getInfo()
         scale_x = proj["transform"][0]
         scale_y = -proj["transform"][4]
@@ -113,9 +118,7 @@ class GetExample(beam.DoFn):
         return super().setup()
 
     def process(self, point: tuple[float, float]) -> Iterator[np.ndarray]:
-        yield landcover.data.get_patch(
-            point, self.image, PATCH_SIZE, self.crs, self.crs_scale
-        )
+        yield get_patch(point, self.image, PATCH_SIZE, self.crs, self.crs_scale)
 
 
 @beam.ptransform_fn
@@ -185,8 +188,7 @@ if __name__ == "__main__":
 
         output_prefix = FileSystems.join(args.data_path, "examples")
         if args.tfrecords:
-            from landcover.dataset.utils.beam_utils import WriteSchema
-            from landcover.dataset.utils.tf_utils import serialize
+            from landcover.model import serialize
 
             _ = (
                 dataset
@@ -200,6 +202,4 @@ if __name__ == "__main__":
             _ = dataset | "🔑 Write schema" >> WriteSchema(args.data_path)
 
         else:
-            from landcover.dataset.utils.beam_utils import WriteToNumPy
-
             _ = dataset | "📝 Write to NumPy" >> WriteToNumPy(output_prefix)

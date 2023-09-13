@@ -17,15 +17,13 @@
 The model is a simple Fully Convolutional Network (FCN).
 """
 
-from __future__ import annotations
-
-import json
-import numpy as np
 import tensorflow as tf
 
 from landcover.data import LANDCOVER_NAME
 from landcover.data import LANDCOVER_CLASSES
-from landcover.model.tf_model import create_model
+from landcover.model import create_model
+from landcover.model import deserialize
+from landcover.model import load_schema
 
 # Default values.
 EPOCHS = 10
@@ -34,8 +32,8 @@ BATCH_SIZE = 512
 
 def load_dataset(
     filenames: list[str],
-    data_shape: tuple,
-    data_types: dict[str, tf.DType],
+    shape: tuple,
+    dtypes: dict[str, tf.DType],
     batch_size: int,
 ) -> tf.data.Dataset:
     """Reads compressed TFRecord files from a directory into a tf.data.Dataset.
@@ -46,32 +44,14 @@ def load_dataset(
     Returns: A tf.data.Dataset with the contents of the TFRecord files.
     """
 
-    def with_shape(tensor: tf.Tensor, shape: tuple) -> tf.Tensor:
-        tensor.set_shape(shape)
-        return tensor
-
-    def deserialize(serialized: tf.Tensor) -> dict[str, tf.Tensor]:
-        features = {
-            name: tf.io.FixedLenFeature([], tf.string) for name in data_types.keys()
-        }
-        example = tf.io.parse_example(serialized, features)
-        return {
-            name: with_shape(tf.io.parse_tensor(example[name], dtype), data_shape)
-            for name, dtype in data_types.items()
-        }
-
-    def preprocess(
-        example: dict[str, tf.Tensor]
-    ) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
-        inputs = example.copy()
-        labels_idx = inputs.pop(LANDCOVER_NAME)
-        labels = tf.one_hot(labels_idx, len(LANDCOVER_CLASSES))
-        return (inputs, labels)
+    def parse_example(serialized: tf.Tensor) -> tuple[dict[str, tf.Tensor], tf.Tensor]:
+        inputs = deserialize(serialized, shape, dtypes)
+        labels = inputs.pop(LANDCOVER_NAME)
+        return (inputs, tf.one_hot(labels, len(LANDCOVER_CLASSES)))
 
     dataset = (
         tf.data.TFRecordDataset(filenames, compression_type="GZIP")
-        .map(deserialize, tf.data.AUTOTUNE)
-        .map(preprocess, tf.data.AUTOTUNE)
+        .map(parse_example, tf.data.AUTOTUNE)
         .batch(batch_size)
         .prefetch(tf.data.AUTOTUNE)
     )
@@ -79,8 +59,8 @@ def load_dataset(
 
 
 def run(
-    data_shape: tuple,
-    data_types: dict[str, tf.DType],
+    shape: tuple,
+    dtypes: dict[str, tf.DType],
     training_files: list[str],
     validation_files: list[str],
     model_path: str,
@@ -104,12 +84,10 @@ def run(
     print("-" * 40)
 
     # Load the training and validation datasets
-    training_dataset = load_dataset(training_files, data_shape, data_types, batch_size)
-    validation_dataset = load_dataset(
-        validation_files, data_shape, data_types, batch_size
-    )
+    training_dataset = load_dataset(training_files, shape, dtypes, batch_size)
+    validation_dataset = load_dataset(validation_files, shape, dtypes, batch_size)
 
-    model = create_model(training_dataset, data_shape, data_types)
+    model = create_model(training_dataset, shape, dtypes)
     model.fit(
         training_dataset,
         validation_data=validation_dataset,
@@ -163,14 +141,11 @@ if __name__ == "__main__":
         type=lambda x: clamp(float(x), 0, 1),
         help="Percentage of data files to use for training, between 0 and 1.",
     )
+    parser.add_argument("--schema-filename", default="schema.json")
     args = parser.parse_args()
 
-    with tf.io.gfile.GFile(tf.io.gfile.join(args.dataset, "schema.json")) as f:
-        schema = json.load(f)
-        data_shape = tuple(schema["shape"])
-        data_types = {
-            name: tf.dtypes.as_dtype(dtype) for name, dtype in schema["dtypes"].items()
-        }
+    with tf.io.gfile.GFile(tf.io.gfile.join(args.dataset, args.schema_filename)) as f:
+        (shape, dtypes) = load_schema(f)
 
     # Split the dataset into training and validation subsets.
     filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord.gz")
@@ -179,8 +154,8 @@ if __name__ == "__main__":
     validation_files = filenames[split_idx:]
 
     run(
-        data_shape=data_shape,
-        data_types=data_types,
+        shape=shape,
+        dtypes=dtypes,
         training_files=training_files,
         validation_files=validation_files,
         model_path=args.model_path,

@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+import numpy as np
 import tensorflow as tf
+from typing import BinaryIO
 
 from landcover.data import LANDCOVER_NAME
 from landcover.data import LANDCOVER_CLASSES
@@ -82,3 +85,44 @@ def create_model(
         ],
     )
     return model
+
+
+def load_schema(fp: BinaryIO) -> tuple[tuple, dict[str, tf.DType]]:
+    schema = json.load(fp)
+    shape = tuple(schema["shape"])
+    dtypes = {
+        name: tf.dtypes.as_dtype(dtype) for name, dtype in schema["dtypes"].items()
+    }
+    return (shape, dtypes)
+
+
+def serialize(array: np.ndarray) -> bytes:
+    fields = {name: tf.convert_to_tensor(array[name]) for name in array.dtype.names}
+    example = tf.train.Example(
+        features=tf.train.Features(
+            feature={
+                name: tf.train.Feature(
+                    bytes_list=tf.train.BytesList(
+                        value=[tf.io.serialize_tensor(data).numpy()]
+                    )
+                )
+                for name, data in fields.items()
+            }
+        )
+    )
+    return example.SerializeToString()
+
+
+def deserialize(
+    serialized: tf.Tensor,
+    shape: tuple,
+    dtypes: dict[str, tf.DType],
+) -> dict[str, tf.Tensor]:
+    def parse_tensor(serialized: tf.Tensor, dtype: tf.DType) -> tf.Tensor:
+        tensor: tf.Tensor = tf.io.parse_tensor(serialized, dtype)
+        tensor.set_shape(shape)
+        return tensor
+
+    features = {name: tf.io.FixedLenFeature([], tf.string) for name in dtypes.keys()}
+    example = tf.io.parse_example(serialized, features)
+    return {name: parse_tensor(example[name], dtype) for name, dtype in dtypes.items()}

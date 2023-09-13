@@ -14,6 +14,6 @@
 
 # https://peps.python.org/pep-0621
 [project]
-name = "io-numpy"
+name = "landcover-inputs"
 version = "1.0.0"
-dependencies = []
+dependencies = ["earthengine-api==0.1.368"]

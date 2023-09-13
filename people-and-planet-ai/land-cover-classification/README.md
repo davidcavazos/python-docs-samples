@@ -28,31 +28,55 @@ This model uses satellite data to classify what is on Earth. The satellite data 
 
 ```sh
 # Create dataset (local)
-pip install "src/landcover[build,dataset]" "src/trainer"
-python -m landcover.dataset.create data/
+pip install src/inputs src/dataset
+python -m landcover.dataset.create data/np --direct_num_workers=20 --direct_running_mode=multi_threading
+
+pip install src/inputs src/dataset src/tensorflow/model
+python -m landcover.dataset.create data/tf --direct_num_workers=20 --direct_running_mode=multi_threading --tfrecords
 
 # Create dataset (Dataflow)
 export PROJECT="My Google Cloud Project ID"
 export BUCKET="My Cloud Storage bucket name"
 export LOCATION="us-central1"
 
-python -m build --sdist src/landcover/ --outdir build/
-python -m landcover.dataset.create gs://$BUCKET/landcover/data \
+pip install src/inputs src/dataset
+python -m build --sdist src/inputs/ --outdir build/
+python -m build --sdist src/dataset/ --outdir build/
+
+python -m landcover.dataset.create gs://$BUCKET/landcover/data/np \
   --runner="DataflowRunner" \
   --project="$PROJECT" \
   --region="$LOCATION" \
   --temp_location="gs://$BUCKET/temp" \
   --requirements_cache="skip" \
-  --extra_package="build/landcover-1.0.0.tar.gz"
+  --extra_package="build/landcover-inputs-1.0.0.tar.gz" \
+  --extra_package="build/landcover-dataset-1.0.0.tar.gz"
+
+pip install src/inputs src/dataset
+python -m build --sdist src/inputs/ --outdir build/
+python -m build --sdist src/dataset/ --outdir build/
+python -m build --sdist src/tensorflow/model/ --outdir build/
+
+python -m landcover.dataset.create gs://$BUCKET/landcover/data/tf \
+  --tfrecords \
+  --runner="DataflowRunner" \
+  --project="$PROJECT" \
+  --region="$LOCATION" \
+  --temp_location="gs://$BUCKET/temp" \
+  --requirements_cache="skip" \
+  --extra_package="build/landcover-inputs-1.0.0.tar.gz" \
+  --extra_package="build/landcover-dataset-1.0.0.tar.gz" \
+  --extra_package="build/landcover-tensorflow-model-1.0.0.tar.gz"
 
 # Train model (local)
-pip install "src/landcover" "src/trainer-tensorflow"
+pip install "src/landcover" "src/tensorflow/trainer"
 
 # Train model (Vertex AI)
 python -m build --sdist src/landcover/ --outdir build/
-python -m build --sdist src/trainer-tensorflow/ --outdir build/
+python -m build --sdist src/tensorflow/trainer/ --outdir build/
 
-
+gsutil cp build/landcover*.tar.gz gs://$BUCKET/landcover/
+gsutil cp build/trainer*.tar.gz gs://$BUCKET/landcover/
 
 # Get predictions
 ```
