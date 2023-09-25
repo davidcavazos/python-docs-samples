@@ -21,6 +21,9 @@ def run(
     location: str,
     data_path: str,
     model_path: str,
+    packages: list[str] = [],
+    display_name: str = "🌍 Land cover",
+    trainer_args: list[str] = [],
 ) -> None:
     # Ignore the next two lines of code if the experiment you are using already
     # has backing tensorboard instance.
@@ -30,16 +33,13 @@ def run(
 
     # https://cloud.google.com/vertex-ai/docs/training/pre-built-containers
     job = aiplatform.CustomPythonPackageTrainingJob(
-        display_name="🌍 Land cover",
-        python_package_gcs_uri=[
-            f"gs://{bucket}/landcover/landcover-1.0.0.tar.gz",
-            f"gs://{bucket}/landcover/trainer-1.0.0.tar.gz",
-        ],
+        display_name=display_name,
+        python_package_gcs_uri=packages,
         python_module_name="trainer.task",
         container_uri="us-docker.pkg.dev/vertex-ai/training/tf-cpu.2-12.py310:latest",
     )
 
-    job.run(args=[data_path, model_path])
+    job.run(args=[data_path, model_path, *trainer_args])
 
 
 if __name__ == "__main__":
@@ -51,7 +51,9 @@ if __name__ == "__main__":
     parser.add_argument("--project", required=True)
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--location", default="us-central")
-    args = parser.parse_args()
+    parser.add_argument("--package", dest="packages", nargs="*")
+    parser.add_argument("--display-name", default="🌍 Land cover")
+    (args, trainer_args) = parser.parse_known_args()
 
     run(
         project=args.project,
@@ -59,4 +61,7 @@ if __name__ == "__main__":
         location=args.location,
         data_path=args.data_path,
         model_path=args.model_path,
+        packages=args.packages,
+        display_name=args.display_name,
+        trainer_args=trainer_args,
     )

@@ -1,8 +1,5 @@
-# Generated from the `serving` package build.
 *.egg-info/
+*.tar.gz
 build/
-
-# Created by the notebooks.
-/data/
-/model/
-/predictions/
+data/
+predictions/

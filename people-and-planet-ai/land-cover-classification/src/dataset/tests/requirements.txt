@@ -1,0 +1,7 @@
+# Test requirements
+pytest==7.4.2
+
+# Local packages
+../../dataset
+../../inputs
+../../model/tensorflow

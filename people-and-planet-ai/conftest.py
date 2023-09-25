@@ -14,16 +14,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from datetime import datetime
 import os
 import platform
 import re
 import subprocess
 import sys
 import textwrap
-import uuid
-from collections.abc import Callable, Iterable
-from datetime import datetime
 from unittest import mock
+import uuid
 
 import pytest
 from google.cloud import storage
@@ -55,9 +55,9 @@ def python_version() -> str:
 
 @pytest.fixture(scope="session")
 def unique_id() -> str:
-    id = uuid.uuid4().hex[0:6]
-    print(f"Test unique identifier: {id}")
-    return id
+    unique_id = uuid.uuid4().hex[0:6]
+    print(f"{unique_id=}")
+    return unique_id
 
 
 @pytest.fixture(scope="session")
@@ -66,19 +66,18 @@ def unique_name(test_name: str, unique_id: str) -> str:
 
 
 @pytest.fixture(scope="session")
-def bucket_name(test_name: str, location: str, unique_id: str) -> Iterable[str]:
+def bucket_name(test_name: str, location: str, unique_id: str) -> Iterator[str]:
     # Override for local testing.
     if "GOOGLE_CLOUD_BUCKET" in os.environ:
         bucket_name = os.environ["GOOGLE_CLOUD_BUCKET"]
-        print(f"bucket_name: {bucket_name} (from GOOGLE_CLOUD_BUCKET)")
+        print(f"{bucket_name=} (from GOOGLE_CLOUD_BUCKET)")
         yield bucket_name
         return
 
     storage_client = storage.Client()
     bucket_name = f"{test_name.replace('/', '-')}-{unique_id}"
     bucket = storage_client.create_bucket(bucket_name, location=location)
-
-    print(f"bucket_name: {bucket_name}")
+    print(f"{bucket_name=}")
     yield bucket_name
 
     # Try to remove all files before deleting the bucket.
@@ -88,13 +87,11 @@ def bucket_name(test_name: str, location: str, unique_id: str) -> Iterable[str]:
     except RuntimeError:
         # If no files were found and it fails, ignore the error.
         pass
-
-    # Delete the bucket.
     bucket.delete(force=True)
 
 
 @pytest.fixture(scope="session")
-# Disable printing to not log the identity token.
+# Disable printing to avoid logging the identity token.
 @mock.patch("builtins.print", lambda x: x)
 def identity_token() -> str:
     return (
@@ -104,6 +101,15 @@ def identity_token() -> str:
 
 def env_var(prefix: str, id: str = "") -> str:
     return f"{prefix}_{id}".replace(".", "").replace("/", "").strip("_")
+
+
+def build_pkg(path: str, outdir: str = "build") -> str:
+    assert os.path.exists(path), f"build_pkg {repr(path)} not found in: {os.getcwd()}"
+    p = run_cmd("python", "-m", "build", path, "--sdist", f"--outdir={outdir}")
+    for line in p.stdout.decode("utf-8").splitlines():
+        if "Successfully built " in line:
+            return os.path.join(outdir, line.split()[-1])
+    return ""
 
 
 def run_cmd(*cmd: str) -> subprocess.CompletedProcess:
@@ -212,7 +218,7 @@ def run_notebook(
         end: str,
         cells: list[nbformat.NotebookNode],
         until_end: bool = False,
-    ) -> Iterable[nbformat.NotebookNode]:
+    ) -> Iterator[nbformat.NotebookNode]:
         in_section = False
         for cell in cells:
             if cell["cell_type"] == "markdown":

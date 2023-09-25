@@ -17,8 +17,8 @@ import numpy as np
 import tensorflow as tf
 from typing import BinaryIO
 
-from landcover.data import LANDCOVER_NAME
-from landcover.data import LANDCOVER_CLASSES
+from landcover.inputs import LANDCOVER_NAME
+from landcover.inputs import LANDCOVER_CLASSES
 
 
 KERNEL_SIZE = 5

@@ -19,15 +19,15 @@ The model is a simple Fully Convolutional Network (FCN).
 
 import tensorflow as tf
 
-from landcover.data import LANDCOVER_NAME
-from landcover.data import LANDCOVER_CLASSES
+from landcover.inputs import LANDCOVER_NAME
+from landcover.inputs import LANDCOVER_CLASSES
 from landcover.model import create_model
 from landcover.model import deserialize
 from landcover.model import load_schema
 
 # Default values.
 EPOCHS = 10
-BATCH_SIZE = 512
+BATCH_SIZE = 4096
 
 
 def load_dataset(
@@ -53,6 +53,7 @@ def load_dataset(
         tf.data.TFRecordDataset(filenames, compression_type="GZIP")
         .map(parse_example, tf.data.AUTOTUNE)
         .batch(batch_size)
+        .cache()
         .prefetch(tf.data.AUTOTUNE)
     )
     return dataset
@@ -61,9 +62,10 @@ def load_dataset(
 def run(
     shape: tuple,
     dtypes: dict[str, tf.DType],
-    training_files: list[str],
-    validation_files: list[str],
+    filenames: list[str],
+    train_split: float,
     model_path: str,
+    tensorboard_path: str,
     epochs: int = EPOCHS,
     batch_size: int = BATCH_SIZE,
 ) -> tf.keras.Model:
@@ -77,21 +79,40 @@ def run(
 
     Returns: The trained model.
     """
-    print(f"{len(training_files)=}")
-    print(f"{len(validation_files)=}")
     print(f"{epochs=}")
     print(f"{batch_size=}")
-    print("-" * 40)
 
     # Load the training and validation datasets
-    training_dataset = load_dataset(training_files, shape, dtypes, batch_size)
-    validation_dataset = load_dataset(validation_files, shape, dtypes, batch_size)
+    dataset = load_dataset(filenames, shape, dtypes, batch_size)
+    total_batches = sum(1 for _ in dataset)
+    training_batches = int(total_batches * train_split)
 
+    profile_batch_start = int(training_batches * 0.2)
+    profile_batch_end = min(profile_batch_start + 10, training_batches - 1)
+    profile_batches = (profile_batch_start, profile_batch_end)
+
+    print(f"{total_batches=}")
+    print(f"{training_batches=}")
+    print(f"{profile_batches=}")
+    print("-" * 40)
+
+    training_dataset = dataset.take(training_batches)
+    validation_dataset = dataset.skip(training_batches)
     model = create_model(training_dataset, shape, dtypes)
     model.fit(
         training_dataset,
         validation_data=validation_dataset,
         epochs=epochs,
+        callbacks=[
+            tf.keras.callbacks.TensorBoard(
+                tensorboard_path,
+                histogram_freq=1,
+                profile_batch=profile_batches,
+                write_images=True,
+            )
+        ]
+        if tensorboard_path
+        else [],
     )
     model.save(model_path)
     print(f"Model saved to: {model_path}")
@@ -141,24 +162,20 @@ if __name__ == "__main__":
         type=lambda x: clamp(float(x), 0, 1),
         help="Percentage of data files to use for training, between 0 and 1.",
     )
+    parser.add_argument("--tensorboard")
     parser.add_argument("--schema-filename", default="schema.json")
     args = parser.parse_args()
 
     with tf.io.gfile.GFile(tf.io.gfile.join(args.dataset, args.schema_filename)) as f:
         (shape, dtypes) = load_schema(f)
 
-    # Split the dataset into training and validation subsets.
-    filenames = tf.io.gfile.glob(f"{args.dataset}/*.tfrecord.gz")
-    split_idx = int(clamp(len(filenames) * args.train_split, 1, len(filenames) - 1))
-    training_files = filenames[:split_idx]
-    validation_files = filenames[split_idx:]
-
     run(
         shape=shape,
         dtypes=dtypes,
-        training_files=training_files,
-        validation_files=validation_files,
+        filenames=tf.io.gfile.glob(f"{args.dataset}/*.tfrecord.gz"),
+        train_split=args.train_split,
         model_path=args.model_path,
+        tensorboard_path=args.tensorboard,
         epochs=args.epochs,
         batch_size=args.batch_size,
     )

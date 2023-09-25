@@ -126,6 +126,7 @@ def CreateDataset(
     pcoll: beam.pvalue.PBegin,
     num_samples: int = NUM_SAMPLES,
     max_requests: int = MAX_REQUESTS,
+    max_size: int | None = None,
 ) -> beam.PCollection[str]:
     """Creates an Apache Beam pipeline to create a dataset.
 
@@ -140,10 +141,20 @@ def CreateDataset(
     """
 
     num_samples_per_seed = max(1, int(num_samples / max_requests))
-    return (
+    samples = (
         pcoll
         | "🌱 Make seeds" >> beam.Create(range(args.max_requests))
         | "📌 Sample points" >> beam.ParDo(SamplePoints(num_samples_per_seed))
+    )
+    if max_size:
+        samples = (
+            samples
+            | f"Limit {max_size}" >> beam.combiners.Sample.FixedSizeGlobally(max_size)
+            | "Flatten" >> beam.FlatMap(lambda xs: xs)
+        )
+
+    return (
+        samples
         | "📉 Throttle" >> beam.Reshuffle(num_buckets=max_requests)
         | "📨 Get examples" >> beam.ParDo(GetExample(PATCH_SIZE))
         | "📈 Unthrottle" >> beam.Reshuffle()
@@ -159,6 +170,11 @@ if __name__ == "__main__":
         help="Directory path to save the dataset files.",
     )
     parser.add_argument(
+        "--tfrecords",
+        action=argparse.BooleanOptionalAction,
+        help="Set to output files as TFRecords.",
+    )
+    parser.add_argument(
         "--num-samples",
         default=NUM_SAMPLES,
         type=int,
@@ -171,9 +187,9 @@ if __name__ == "__main__":
         help="Limit the number of concurrent requests to Earth Engine.",
     )
     parser.add_argument(
-        "--tfrecords",
-        action=argparse.BooleanOptionalAction,
-        help="Set to output files as TFRecords.",
+        "--max-size",
+        type=int,
+        help="Limit the maximum size of the dataset if set.",
     )
     args, beam_args = parser.parse_known_args()
 
@@ -184,6 +200,7 @@ if __name__ == "__main__":
         dataset = pipeline | "🗄️ Create dataset" >> CreateDataset(
             num_samples=args.num_samples,
             max_requests=args.max_requests,
+            max_size=args.max_size,
         )
 
         output_prefix = FileSystems.join(args.data_path, "examples")

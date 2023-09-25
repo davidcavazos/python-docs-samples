@@ -1,0 +1,7 @@
+# Requirements for model serving
+Flask==2.3.3
+gunicorn==21.2.0
+
+# Local packages
+./landcover-inputs-1.0.0.tar.gz
+./landcover-model-tensorflow-1.0.0.tar.gz
