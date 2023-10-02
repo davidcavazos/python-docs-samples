@@ -25,6 +25,7 @@ import io
 
 import ee
 from google.api_core import retry
+import google.auth
 import numpy as np
 
 # Constants.
@@ -60,6 +61,23 @@ WORLD_POLYGONS = [
     # Australia
     [(170.0, -47.0), (179.0, -37.0), (167.0, -12.0), (128.0, 17.0), (106.0, -29.0)],
 ]
+
+
+def ee_init() -> None:
+    # Get the default credentials to authenticate to Earth Engine.
+    credentials, project = google.auth.default(
+        scopes=[
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/earthengine",
+        ]
+    )
+    # Use the Earth Engine High Volume endpoint.
+    #   https://developers.google.com/earth-engine/cloud/highvolume
+    ee.Initialize(
+        credentials.with_quota_project(None),
+        project=project,
+        opt_url="https://earthengine-highvolume.googleapis.com",
+    )
 
 
 def get_sentinel2(year: int, default_value: float = 1000.0) -> ee.Image:

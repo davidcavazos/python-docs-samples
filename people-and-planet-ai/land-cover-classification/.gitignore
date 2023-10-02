@@ -2,4 +2,5 @@
 *.tar.gz
 build/
 data/
+lightning_logs/
 predictions/

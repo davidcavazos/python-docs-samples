@@ -32,12 +32,11 @@ import apache_beam as beam
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.options.pipeline_options import PipelineOptions
 import ee
-import google.auth
 import numpy as np
-
 
 from landcover.dataset.utils import WriteToNumPy
 from landcover.dataset.utils import WriteSchema
+from landcover.inputs import ee_init
 from landcover.inputs import get_example_image
 from landcover.inputs import get_patch
 from landcover.inputs import sample_points
@@ -48,23 +47,6 @@ MAX_REQUESTS = 20  # default EE maximum concurrent request quota
 
 # Constants.
 PATCH_SIZE = 9
-
-
-def ee_init() -> None:
-    # Get the default credentials to authenticate to Earth Engine.
-    credentials, project = google.auth.default(
-        scopes=[
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/earthengine",
-        ]
-    )
-    # Use the Earth Engine High Volume endpoint.
-    #   https://developers.google.com/earth-engine/cloud/highvolume
-    ee.Initialize(
-        credentials.with_quota_project(None),
-        project=project,
-        opt_url="https://earthengine-highvolume.googleapis.com",
-    )
 
 
 class SamplePoints(beam.DoFn):

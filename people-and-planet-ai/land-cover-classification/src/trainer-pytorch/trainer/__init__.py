@@ -11,9 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# https://peps.python.org/pep-0621
-[project]
-name = "landcover-inputs"
-version = "1.0.0"
-dependencies = ["earthengine-api==0.1.371"]

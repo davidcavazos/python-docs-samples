@@ -74,7 +74,7 @@ def test_landcover_trainer_vertex(
     project: str, bucket_name: str, location: str, data_path: str
 ):
     packages = [
-        # conftest.build_pkg("src/model/tensorflow", "build/tf"),
+        conftest.build_pkg("src/model/tensorflow", "build/tf"),
         conftest.build_pkg("src/trainer/tensorflow", "build/tf"),
     ]
     conftest.run_cmd("gsutil", "-m", "cp", *packages, f"gs://{bucket_name}/build/tf/")

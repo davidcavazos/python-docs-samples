@@ -27,6 +27,12 @@ This model uses satellite data to classify what is on Earth. The satellite data 
 [Vertex AI]: https://cloud.google.com/vertex-ai
 
 ```sh
+# On MacOS with M1 chips.
+export GRPC_PYTHON_LDFLAGS=" -framework CoreFoundation"
+pip install --no-cache-dir --force-reinstall --no-binary :all: grpcio
+```
+
+```sh
 # Create dataset (local)
 pip install src/inputs src/dataset
 python -m landcover.dataset.create data/np --direct_num_workers=20 --direct_running_mode=multi_threading
@@ -110,33 +116,3 @@ $(cd src/serving/tensorflow; gcloud beta code dev)
 # Get predictions (Cloud Run)
 gcloud run deploy landcover-tensorflow src/serving/tensorflow
 ```
-
-Hi all, I'm working on a refactor for an e2e sample. Due to Python dependency conflicts under certain circumstances, the best approach was splitting the sample into multiple subpackages. Then we could use different combinations of subpackages to make sure we avoided the dependency conflicts. Each subpackage should have its own tests since installing all dependencies in a single session causes dependency conflicts.
-
-My question is, how does the testing infrastructure detect diffs to see which tests to run? Here's a simplified version of what I'm trying to do:
-
-```
-sample_root_directory
-├─ subpackageA
-│  ├─ subpackageA/
-│  │  └─ src files...
-│  ├─ tests/
-│  │  └─ test files...
-│  ├─ noxfile_config.py
-│  ├─ requirements-test.txt
-│  └─ pyproject.toml
-├─ subpackageB
-│  ├─ subpackageB/
-│  │  └─ src files...
-│  ├─ tests/
-│  │  └─ test files...
-│  ├─ noxfile_config.py
-│  ├─ requirements-test.txt
-│  └─ pyproject.toml
-├─ other subpackages...
-└─ README.md
-```
-
-If I change files inside the package's src directory which could include multiple subdirectories, would it trigger the tests?
-
-Is there a way to trigger tests if a file on a parent directory changes, like a notebook at the same level as the README.md?
