@@ -126,5 +126,9 @@ python -m trainer_tensorflow.vertex gs://$BUCKET/landcover/data/tf-$VERSION gs:/
 ## Predictions
 
 ```sh
+# TensorFlow
 MODEL="gs://$BUCKET/landcover/model/tensorflow-10K"
+MODEL_EE="gs://$BUCKET/landcover/model/tensorflow-10K-ee"
+
+python -m trainer_tensorflow.eeify $MODEL $MODEL_EE
 ```

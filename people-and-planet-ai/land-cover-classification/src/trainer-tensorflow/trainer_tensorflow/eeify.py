@@ -15,26 +15,20 @@
 import tensorflow as tf
 
 
-class DeserlializeInput(tf.keras.layers.Layer):
-    def call(self, tensor):
-        return_dict = {}
-
-        for k, v in tensor.items():
-            decoded = tf.io.decode_base64(v)
-            return_dict[k] = tf.map_fn(
-                lambda x: tf.io.parse_tensor(x, tf.float32),
-                decoded,
-                fn_output_signature=tf.float32,
-            )
-
-        return return_dict
+class DecodeInputs(tf.keras.layers.Layer):
+    def call(self, batch: tf.Tensor, dtype: tf.DType = tf.float32) -> tf.Tensor:
+        return tf.map_fn(
+            lambda x: tf.io.parse_tensor(x, dtype),
+            tf.io.decode_base64(batch),
+            fn_output_signature=dtype,
+        )
 
 
-class ReserlializeOutput(tf.keras.layers.Layer):
-    def call(self, tensor_input):
+class EncodeOutputs(tf.keras.layers.Layer):
+    def call(self, batch: tf.Tensor) -> tf.Tensor:
         return tf.map_fn(
             lambda x: tf.io.encode_base64(tf.io.serialize_tensor(x)),
-            tensor_input,
+            batch,
             fn_output_signature=tf.string,
         )
 
@@ -44,20 +38,17 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("model_dir")
+    parser.add_argument("model_ee_dir")
+    parser.add_argument("--input-name", default="array")
     args = parser.parse_args()
 
-    model = tf.keras.models.load_model(args.model_dir, compile=False)
+    model = tf.keras.models.load_model(args.model_dir)
 
     inputs = {
-        model.inputs[0].name: tf.keras.Input(
-            shape=[], dtype=tf.string, name="array_image"
-        )
+        args.input_name: tf.keras.Input(shape=[], dtype=tf.string, name=args.input_name)
     }
+    outputs = tf.keras.Sequential([DecodeInputs(), model, EncodeOutputs()])
+    model_ee = tf.keras.Model(inputs, outputs(inputs[args.input_name]))
+    model_ee.summary()
 
-    input_deserializer = DeserlializeInput()
-    output_deserilaizer = ReserlializeOutput()
-
-    updated_model_input = input_deserializer(serlialized_inputs)
-    updated_model = model(updated_model_input)
-    updated_model = output_deserilaizer(updated_model)
-    updated_model = tf.keras.Model(serlialized_inputs, updated_model)
+    model_ee.save(args.model_ee_dir)
