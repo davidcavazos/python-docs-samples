@@ -15,17 +15,17 @@
 from glob import glob
 import os
 
-import lightning.pytorch as pl
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset
 import numpy as np
 
-from landcover.inputs import LANDCOVER_NAME
+LABEL_NAME = "landcover"
 
 
 class LandCoverDataset(Dataset):
     def __init__(self, data_dir: str) -> None:
-        self.files = glob(os.path.join(data_dir, "*.npz"))
+        data_path = data_dir.replace("gs://", "/gcs/")
+        self.files = glob(os.path.join(data_path, "*.npz"))
         if not self.files:
             raise FileNotFoundError(f"No .npz files found in {data_dir}")
         self.chunk_sizes = [len(np.load(f)) for f in self.files]
@@ -42,9 +42,9 @@ class LandCoverDataset(Dataset):
                 inputs = [
                     example[field]
                     for field in example.dtype.names
-                    if field != LANDCOVER_NAME
+                    if field != LABEL_NAME
                 ]
-                labels = [example[LANDCOVER_NAME]]
+                labels = [example[LABEL_NAME]]
                 return torch.tensor(np.array(inputs)), torch.tensor(np.array(labels))
             seen += size
-        return (torch.tensor([]), torch.tensor([]))
+        raise KeyError(f"Dataset key {idx} not found, length is {len(self)}")

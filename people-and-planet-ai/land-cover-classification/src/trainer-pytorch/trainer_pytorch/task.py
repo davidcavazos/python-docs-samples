@@ -16,22 +16,47 @@ import os
 
 import lightning.pytorch as pl
 import numpy as np
-import torch
 from torch.utils.data import DataLoader, random_split
-from trainer.dataset import LandCoverDataset
-from trainer.model import LandCoverModel
+from trainer_pytorch.dataset import LandCoverDataset
+from trainer_pytorch.model import LandCoverModel
 
-from landcover.inputs import LANDCOVER_CLASSES
+# Default values.
+EPOCHS = 100
+BATCH_SIZE = 512
+TRAIN_VAL_SPLIT = 0.9
+DATASET_WORKERS = 8
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("data_dir")
-    parser.add_argument("model_dir")
-    parser.add_argument("--max-epochs", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=512)
-    parser.add_argument("--train-split", type=float, default=0.9)
+    parser.add_argument(
+        "data_dir",
+        help="Local or Cloud Storage directory for dataset files.",
+    )
+    parser.add_argument(
+        "model_dir",
+        help="Local or Cloud Storage directory path to store the trained model.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=EPOCHS,
+        help="Number of times the model goes through the training dataset during training.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=BATCH_SIZE,
+        help="Number of examples per training batch.",
+    )
+    parser.add_argument(
+        "--train-split",
+        default=0.9,
+        type=float,
+        help="Percentage of data files to use for training, between 0 and 1.",
+    )
+    parser.add_argument("--dataset-workers", type=int, default=DATASET_WORKERS)
     args = parser.parse_args()
 
     assert (
@@ -53,25 +78,24 @@ if __name__ == "__main__":
     print(f"{len(std)=}")
     print(f"{std=}")
 
-    model = LandCoverModel(mean, std, len(LANDCOVER_CLASSES))
+    model = LandCoverModel(mean, std)
     trainer = pl.Trainer(
         default_root_dir="model/pytorch",
-        max_epochs=args.max_epochs,
-        logger=True,
+        max_epochs=args.epochs,
     )
 
     train_dataloader = DataLoader(
         train_subset,
         args.batch_size,
         shuffle=True,
-        num_workers=os.cpu_count() or 0,
+        num_workers=args.dataset_workers,
         persistent_workers=True,
         pin_memory=True,
     )
     val_dataloader = DataLoader(
         val_subset,
         args.batch_size,
-        num_workers=os.cpu_count() or 0,
+        num_workers=args.dataset_workers,
         persistent_workers=True,
         pin_memory=True,
     )

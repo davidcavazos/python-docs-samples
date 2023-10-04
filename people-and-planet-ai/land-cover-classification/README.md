@@ -26,19 +26,24 @@ This model uses satellite data to classify what is on Earth. The satellite data 
 [TensorFlow]: https://www.tensorflow.org/
 [Vertex AI]: https://cloud.google.com/vertex-ai
 
+## Install
+
 ```sh
 # On MacOS with M1 chips.
 export GRPC_PYTHON_LDFLAGS=" -framework CoreFoundation"
 pip install --no-cache-dir --force-reinstall --no-binary :all: grpcio
 ```
 
-```sh
-# Create dataset (local)
-pip install src/inputs src/dataset
-python -m landcover.dataset.create data/np --direct_num_workers=20 --direct_running_mode=multi_threading
+## Create dataset
 
+```sh
+# TensorFlow local
 pip install src/inputs src/dataset src/model/tensorflow
 python -m landcover.dataset.create data/tf --direct_num_workers=20 --direct_running_mode=multi_threading --tfrecords
+
+# PyTorch local
+pip install src/inputs src/dataset
+python -m landcover.dataset.create data/np --direct_num_workers=20 --direct_running_mode=multi_threading
 
 # Create dataset (Dataflow)
 export PROJECT="My Google Cloud Project ID"
@@ -58,14 +63,6 @@ python -m landcover.dataset.create gs://$BUCKET/landcover/data/np-1M-unthrottled
   --requirements_cache="skip" \
   --extra_package="build/landcover-inputs-1.0.0.tar.gz" \
   --extra_package="build/landcover-dataset-1.0.0.tar.gz"
-
-#  100 samples: 1 worker, 18m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-13_14_12_36-5090516709424439239
-#   1K samples: 3 workers, 18m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-13_14_33_17-10394742472595658906
-#  10K samples: 2 workers, 47m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-13_14_52_00-16553727520001131852
-# 100K samples: 21->10 workers, 1h 38m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-13_15_47_18-9227384235400719392
-#   1M samples: 20->10 workers, 8h 25m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-13_17_54_52-10006425792414329007
-#   1M (unthrottled): 20->10 workers, 10h 4m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-14_11_30_56-16263900987840015973
-#  10M samples: workers, h m -- https://pantheon.corp.google.com/dataflow/jobs/us-central1/2023-09-18_17_44_29-16480442746729276935
 
 pip install src/inputs src/dataset src/model/tensorflow
 python -m build --sdist src/inputs --outdir build/
@@ -92,27 +89,42 @@ python -m build --sdist src/model/tensorflow --outdir build/
 
 python -m landcover.dataset.np_to_tf gs://$BUCKET/landcover/data/np-1M gs://$BUCKET/landcover/data/tf-1M --direct_num_workers=20 --direct_running_mode=multi_threading
 
-# -----------------
+```
 
-# Train model (local)
-pip install build src/model/tensorflow src/trainer/tensorflow
-python -m trainer.task data/tf-1M model --tensorboard="logs/tensorflow"
+# Train the model
 
-# Train model (Vertex AI)
-python -m build --sdist src/model/tensorflow --outdir build/
-python -m build --sdist src/trainer/tensorflow --outdir build/
+```sh
+# PyTorch local
+pip install src/trainer-pytorch
+python -m trainer_pytorch.task data/np-10K model/pytorch
 
-gsutil cp build/model-tensorflow-*.tar.gz gs://$BUCKET/landcover/
-gsutil cp build/trainer-tensorflow-*.tar.gz gs://$BUCKET/landcover/
+# PyTorch Vertex AI
+python -m build --sdist src/trainer-pytorch --outdir build/
+gsutil cp build/trainer-pytorch-1.0.0.tar.gz gs://$BUCKET/landcover/
+VERSION="10K"
+python -m trainer_pytorch.vertex gs://$BUCKET/landcover/data/np-$VERSION gs://$BUCKET/landcover/model/pytorch-$VERSION \
+  --display-name="PT land-cover-$VERSION" \
+  --project="$PROJECT" \
+  --bucket="$BUCKET" \
+  --package="gs://$BUCKET/landcover/trainer-pytorch-1.0.0.tar.gz"
 
-# -----------------
+# TensorFlow local
+pip install src/trainer-tensorflow
+python -m trainer_tensorflow.task data/tf-10K model/tensorflow
 
-# Get predictions (local)
-python src/serving/tensorflow/main.py
+# TensorFlow Vertex AI
+python -m build --sdist src/trainer-tensorflow --outdir build/
+gsutil cp build/trainer-tensorflow-1.0.0.tar.gz gs://$BUCKET/landcover/
+VERSION="1M"
+python -m trainer_tensorflow.vertex gs://$BUCKET/landcover/data/tf-$VERSION gs://$BUCKET/landcover/model/tensorflow-$VERSION \
+  --display-name="TF land-cover-$VERSION" \
+  --project="$PROJECT" \
+  --bucket="$BUCKET" \
+  --package="gs://$BUCKET/landcover/trainer-tensorflow-1.0.0.tar.gz"
+```
 
-# Get predictions (emulator)
-$(cd src/serving/tensorflow; gcloud beta code dev)
+## Predictions
 
-# Get predictions (Cloud Run)
-gcloud run deploy landcover-tensorflow src/serving/tensorflow
+```sh
+MODEL="gs://$BUCKET/landcover/model/tensorflow-10K"
 ```

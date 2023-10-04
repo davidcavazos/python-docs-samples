@@ -14,9 +14,9 @@
 
 # https://peps.python.org/pep-0621
 [project]
-name = "trainer"
+name = "trainer-tensorflow"
 version = "1.0.0"
-dependencies = [
-  "google-cloud-aiplatform==1.31.1",
-  "tensorboard-plugin-profile==2.13.1",
-]
+dependencies = ["tensorflow==2.14.0", "tensorboard-plugin-profile==2.13.1"]
+
+[project.optional-dependencies]
+vertex = ["google-cloud-aiplatform==1.33.1"]
